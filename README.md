@@ -1,88 +1,64 @@
-# Hydra Leaf v1.2.0
+# 🌿 Hydra Leaf — v1.2.0
 
-A lightweight Jetpack Compose Android game where a single leaf glides across a watercolor river and the player steers by tilt, tap, or touch. The entire scene is rendered on a logical 1080x1920 viewport that scales to any phone size, aspect ratio, or pixel density.
+Welcome! Hydra Leaf is a tiny, joyful river game for Android — guide a leaf, dodge obstacles, collect boosts, and unlock skins. This README is short, friendly, and ready-to-skim so you can get the APK and play fast.
 
-## Project layout
+Download (release build):
 
-```
-app/
-  src/main/java/com/example/hydraleaf/
-    MainActivity.kt        # Entry point + sensor lifecycle glue
-    GameViewModel.kt       # MVVM state container, physics, obstacles, collisions
-    LeafGameScreen.kt      # Compose UI, Canvas renderer, viewport math, HUD
-    SensorUtils.kt         # SensorManager controller + low-pass filtering helpers
-    ViewportUtils.kt       # logicalToScreen / screenToLogical helpers and mapping data class
-    GameConstants.kt       # Virtual world dimensions and tuning constants
-  src/main/AndroidManifest.xml
-README.md                  # You are here
-```
+- File: `app-release.apk`
+- Location: `app/build/outputs/apk/release/app-release.apk` (≈ 14.6 MB)
+- Quick download link (after upload): https://github.com/sharancode3/Hydra-leaf-apk/releases/tag/v1.2.0
 
-## Build & dependency notes
+Why you'll like it:
 
-- Kotlin DSL Gradle files (`settings.gradle.kts`, root `build.gradle.kts`, `app/build.gradle.kts`) are configured for AGP **8.6.0**, Kotlin **1.9.24**, and the Compose BOM **2024.10.00**.
-- Compose is already enabled via `buildFeatures.compose = true` and `kotlinCompilerExtensionVersion = 1.5.15`, so UI code in `LeafGameScreen` works out of the box.
-- `app/build.gradle.kts` wires in Material3, Activity Compose, lifecycle runtime/viewmodel Compose APIs, and `kotlinx-coroutines-android` so the `StateFlow` sensor stream compiles.
-- `compileSdk` / `targetSdk` are pinned to **34** with `minSdk 24`. Adjust those fields if you need older device support.
-- Release builds reuse the default optimized ProGuard config; extend `app/proguard-rules.pro` when you harden the prototype.
+- Play anywhere: one-touch or tilt controls
+- Cute cosmetics: skins and river themes you can buy in the Shop
+- Daily challenges and small rewards to keep things fresh
+- Lightweight: small APK, fast startup, made with Compose for smooth UI
 
-## Building an APK
+Quick start — run locally (Windows PowerShell):
 
-1. Install **Android Studio Ladybug (2024.3)+** with Android SDK 34 and the latest build tools.
-2. Use *File ▸ Open...* and select the repo root. Studio imports the Kotlin DSL project, runs a Gradle sync with its bundled Gradle runtime, and configures the emulator/device list. If you also want CLI builds, trigger the `wrapper` task once from the Gradle tool window (or run `gradle wrapper --gradle-version 8.7` after installing Gradle) so that `gradlew` scripts are generated.
-3. Choose *Build ▸ Make Project* to verify, then *Build ▸ Build Bundle(s) / APK(s) ▸ APK*. The debug APK lands in `app/build/outputs/apk/debug/app-debug.apk` and can be installed via *Build ▸ Analyze APK* or `adb install`.
-
-After the wrapper exists you can build outside Studio with:
-
-```bash
-./gradlew assembleDebug
+```powershell
+.\gradlew.bat assembleDebug
+.\gradlew.bat :app:assembleRelease
 ```
 
-Use `gradlew.bat assembleDebug` on Windows. Release artifacts live under `app/build/outputs/apk/release/` when you run `assembleRelease`.
+Install the release APK to a connected device:
 
-## Virtual viewport & scaling
+```powershell
+adb install -r app\build\outputs\apk\release\app-release.apk
+```
 
-- Logical size lives in `GameConstants.VIRTUAL_WIDTH` / `VIRTUAL_HEIGHT` (default **1080f x 1920f**).
-- `LeafGameScreen` recomputes the mapping each recomposition:
-  - `scale = min(screenWidth / virtualWidth, screenHeight / virtualHeight)`
-  - `offsetX = (screenWidth - virtualWidth * scale) / 2`
-  - `offsetY = (screenHeight - virtualHeight * scale) / 2`
-- Helper functions `logicalToScreen(PointF)` and `screenToLogical(PointF)` (see `ViewportUtils.kt`) are used for drawing, tap hit‑testing, and collision checks.
-- To change the logical world, edit the constants and adjust art sizes / spawn logic if needed. All rendering and physics will pick up the new numbers automatically because they depend on the constants and viewport mapping.
+Make it downloadable on GitHub (3 easy steps):
 
-## Controls & sensors
+1. Open your repo's **Releases** page and click **Draft a new release**. 
+2. Select tag `v1.2.0` (or create it), give the release a title like **Hydra Leaf v1.2.0**, and paste a 1-line note: `A small, joyful river game — release v1.2.0`.
+3. Drag `app-release.apk` into the assets area and click **Publish release**.
 
-- `SensorController` registers `TYPE_ROTATION_VECTOR` with an accelerometer/magnetometer fallback.
-- Raw roll radians are normalized to `[-1, 1]`, low-pass filtered, and exposed as a `StateFlow` consumed by Compose.
-- Physics mapping (in `GameViewModel.updateGameState`) steers the leaf toward a `targetX` computed as `virtualWidth/2 + tiltFactor * virtualWidth * 0.4f`. Damping + stiffness provide springy motion and stay frame-rate independent thanks to the `withFrameNanos` driven delta time loop.
+After publishing the asset the direct download URL will be:
 
-## Gameplay systems
+```
+https://github.com/sharancode3/Hydra-leaf-apk/releases/download/v1.2.0/app-release.apk
+```
 
-- Obstacles spawn at the top with random widths/speeds, flow downstream, and award score when they pass the leaf.
-- `detectCollision` converts both `RectF` bounds through the viewport helper to keep hit tests consistent with the pixels on screen. AABB math is kept simple for readability.
-- A debug overlay (tap the top-right logical quadrant or hit the HUD button) shows current virtual size, scale, and offsets so you can verify alignment on odd aspect ratios.
+Highlights in v1.2.0
 
-## Testing & tuning checklist
+- Persistent bottom navigation and saved difficulty
+- Rebuilt HUD with accessible touch targets (48dp minimum)
+- Shop + daily challenges + celebration animations on claim/purchase
+- First-launch onboarding slides for new players
 
-1. **Emulators by aspect ratio**
-   - 9:16 (Pixel 3) – baseline portrait experience.
-   - 18:9 (Pixel 5) – confirms safe areas + tall layouts.
-   - 19.5:9 (Pixel 7/8) – stresses notch spacing and the inset-aware HUD.
-   - Optional: rotate to landscape to verify that objects still scale and letterboxing behaves despite the portrait lock.
-2. **Real device** – any mid-range phone (e.g., Pixel 6a, Galaxy A54). Ensure sensors respond smoothly and tune `LEAF_STIFFNESS`, `LEAF_DAMPING`, or `MAX_TILT_FACTOR` if motion feels sluggish or twitchy.
-3. **Debug overlay** – toggle it and confirm that the leaf, obstacles, and HUD remain centered despite different DPIs/resolutions.
-4. **Sensor sanity** – run in an emulator with the virtual sensors panel to script tilt curves, then replay on hardware.
-5. **Performance** – profile with `adb shell dumpsys gfxinfo <pkg>` or `adb shell am profile` to confirm steady frame pacing. The Canvas renderer reuses `Path` objects and avoids per-frame allocations to keep GC noise low.
+Files you care about
 
-## Customization tips
+- `app/src/main/java/.../GameViewModel.kt` — gameplay + persistence
+- `app/src/main/java/.../LeafGameScreen.kt` — game rendering & HUD
+- `app/build.gradle.kts` — version bump: `versionName = "1.2.0"`, `versionCode = 2`
 
-- Swap the programmatic leaf path / obstacle colors with bitmaps by replacing the draw calls in `LeafGameScreen`. Keep positions in logical units and convert them through `logicalToScreen` before drawing.
-- Adjust spawn frequency or difficulty curves in `GameConstants` and `GameViewModel.spawnObstacle()`.
-- To expose additional HUD buttons, use Compose layouts outside the `Canvas` but still inside the `Box` so they inherit safe area padding.
+If you want to tweak or extend
 
-## Manual test notes
+- Tune speeds and difficulty: `GameConstants.kt`
+- Change progression or rewards: `GameViewModel.kt`
+- Update UI or themes: `LeafGameScreen.kt` and `ui/Theme.kt`
 
-- Sensors: verify smoothing by logging `SensorController.tiltState` and ensuring the value stays within [-1, 1].
-- Collisions: turn on the debug overlay, pause the game, and inspect obstacle alignment to ensure logical/spatial calculations match the viewport.
-- Resilience: leave the app, resume, and confirm sensors automatically re-register via `setupSensors()` / `tearDownSensors()`.
+Need help publishing the release? I can create the exact release title, description, and upload steps for copy/paste — tell me if you want the full 1-click text ready to paste into GitHub.
 
-Happy floating! 🌿
+Happy floating — go drop a leaf into the river! 🌊🍃
