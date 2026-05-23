@@ -10,6 +10,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -43,6 +45,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -53,6 +56,7 @@ import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -72,6 +76,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,6 +90,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -286,8 +292,23 @@ fun LeafGameScreen(
 
         // ── HUD ──────────────────────────────────────────────────────────────
         AnimatedVisibility(visible = !showSettings && uiState.phase == GamePhase.PLAYING) {
-            IconHud(Modifier.align(Alignment.TopCenter), 0.9f, true, uiState.soundEnabled,
-                { viewModel.togglePause() }, { showSettings = true }, { viewModel.toggleSound() })
+            IconHud(
+                modifier = Modifier.align(Alignment.TopCenter),
+                iconScale = 0.9f,
+                isRunning = true,
+                soundEnabled = uiState.soundEnabled,
+                score = uiState.score,
+                bestScore = uiState.highScore,
+                level = uiState.level,
+                obstaclesCleared = uiState.obstaclesCleared,
+                drops = uiState.riverDrops,
+                difficultyLabel = uiState.difficultyPreset.displayName,
+                hudOpacity = uiState.controlSettings.hudOpacity,
+                showSpeedIndicator = uiState.showSpeedIndicator,
+                onPauseToggle = { viewModel.togglePause() },
+                onSettingsRequested = { showSettings = true },
+                onSoundToggle = { viewModel.toggleSound() }
+            )
         }
 
         // Power-up HUD timers
@@ -337,7 +358,7 @@ fun LeafGameScreen(
         // Game Over
         AnimatedVisibility(visible = uiState.phase == GamePhase.GAME_OVER, enter = fadeIn(tween(400)) + scaleIn(tween(400)), exit = fadeOut()) {
             GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
-                uiState.runDropsEarned, uiState.sensitivitySuggestion, { viewModel.startNewRun() }, onBackToMenu)
+            uiState.runDropsEarned, uiState.sensitivitySuggestion, { viewModel.startNewRun() }, onBackToMenu)
         }
 
         // Settings
@@ -345,16 +366,13 @@ fun LeafGameScreen(
             SettingsPanel(uiState.controlSettings, { viewModel.setSensitivityMultiplier(it) }, { viewModel.setCurve(it) }, { viewModel.setInvertTilt(it) },
                 { viewModel.setTiltResponse(it) }, { viewModel.setLeafMomentum(it) }, { viewModel.setHitboxShrink(it) }, { viewModel.setDeadZone(it) },
                 { viewModel.setInstantSnap(it) }, { viewModel.setControlMode(it) }, { viewModel.applyPreset(it) },
-                onRequestCalibrate, { showSettings = false }, { viewModel.resetSettings() })
+                onRequestCalibrate, { showSettings = false }, { viewModel.resetSettings() },
+                { viewModel.setMusicVolume(it) }, { viewModel.setSfxVolume(it) }, { viewModel.setHapticsEnabled(it) },
+                { viewModel.setDifficultyPreset(it) }, { viewModel.setShowSpeedIndicator(it) }, { viewModel.setShowTrailEffect(it) })
         }
 
         // Debug
         if (BuildConfig.SHOW_DEBUG_OVERLAY && showDebug) DebugPanel(Modifier.align(Alignment.BottomStart), uiState.debugTelemetry)
-
-        // Score + Drops
-        AnimatedVisibility(visible = !showSettings && uiState.phase == GamePhase.PLAYING) {
-            ScoreChip(Modifier.align(Alignment.BottomCenter), uiState.score, uiState.highScore, uiState.riverDrops)
-        }
 
         // Boost meter
         AnimatedVisibility(visible = uiState.boostActive) {
@@ -491,26 +509,105 @@ private fun DrawScope.drawLeaf(ui: GameUiState, vp: ViewportMapping, reusablePat
 
 private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping) {
     ui.obstacles.forEach { o ->
-        val tl = logicalToScreen(PointF(o.x - o.width * 0.5f, o.y - o.height * 0.5f), vp)
-        val sz = Size(o.width * vp.scale, o.height * vp.scale)
-        when (o.kind) {
-            ObstacleKind.LOG -> drawHurdleTextured(tl, sz, o.hurdleStyle, o.warningHighlight, vp)
-            ObstacleKind.ROCK -> {
-                val rPx = min(sz.width, sz.height) * 0.5f
-                val ctr = Offset(tl.x + sz.width / 2f, tl.y + sz.height / 2f)
-                drawCircle(Color(0xFF3B4C5B), rPx, ctr)
-                // Stone cracks
-                for (i in 0..4) {
-                    val angle = i * 72f + 15f
-                    val rad = angle * PI.toFloat() / 180f
-                    val endX = ctr.x + cos(rad) * rPx * 0.7f
-                    val endY = ctr.y + sin(rad) * rPx * 0.7f
-                    drawLine(Color(0x664B5F6D), ctr, Offset(endX, endY), strokeWidth = 1.5f * vp.scale)
-                }
-                drawCircle(Color(0x3320272E), rPx, ctr, style = Stroke(4f * vp.scale))
-            }
+        val entryScale = 0.72f + o.entryProgress * 0.28f
+        val drift = if (o.pattern == ObstaclePattern.SWAY || o.pattern == ObstaclePattern.CROSS) sin((ui.runTime * 2.6f + o.driftPhase).toDouble()).toFloat() * o.width * 0.08f else 0f
+        val tlPoint = logicalToScreen(PointF(o.x + drift - o.width * 0.5f * entryScale, o.y - o.height * 0.5f * entryScale), vp)
+        val tl = Offset(tlPoint.x, tlPoint.y)
+        val sz = Size(o.width * vp.scale * entryScale, o.height * vp.scale * entryScale)
+        val center = Offset(tl.x + sz.width / 2f, tl.y + sz.height / 2f)
+        val warningAlpha = o.warningHighlight.coerceIn(0f, 1f)
+        val themeAccent = when (ui.riverTheme) {
+            RiverTheme.FOREST -> Color(0xFF68C98A)
+            RiverTheme.ARCTIC -> Color(0xFFB7F0FF)
+            RiverTheme.VOLCANIC -> Color(0xFFFF9362)
+            RiverTheme.CRYSTAL -> Color(0xFFB48DFF)
+            RiverTheme.MIDNIGHT -> Color(0xFF7BD7FF)
+        }
+
+        when (ui.riverTheme) {
+            RiverTheme.FOREST -> drawForestObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
+            RiverTheme.ARCTIC -> drawArcticObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
+            RiverTheme.VOLCANIC -> drawVolcanicObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
+            RiverTheme.CRYSTAL -> drawCrystalObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
+            RiverTheme.MIDNIGHT -> drawMidnightObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
         }
     }
+}
+
+private fun DrawScope.drawForestObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+    when (o.pattern) {
+        ObstaclePattern.CENTER, ObstaclePattern.LEFT, ObstaclePattern.RIGHT -> {
+            if (o.variant % 2 == 0) {
+                drawRoundRect(Color(0xFF4B4031), tl, sz, CornerRadius(18f * vp.scale))
+                repeat(5) { i -> drawLine(Color(0x5537261B), Offset(tl.x + 6f, tl.y + sz.height * (0.15f + i * 0.17f)), Offset(tl.x + sz.width - 6f, tl.y + sz.height * (0.12f + i * 0.17f)), strokeWidth = 1.5f) }
+            } else {
+                drawCircle(Color(0xFF2E6A3F), min(sz.width, sz.height) * 0.44f, center)
+                drawCircle(Color(0x3324B36D), min(sz.width, sz.height) * 0.50f, center)
+                drawLine(Color.White.copy(alpha = 0.75f), center.copy(y = center.y - sz.height * 0.18f), center.copy(y = center.y - sz.height * 0.05f), strokeWidth = 2f)
+            }
+        }
+        ObstaclePattern.DOUBLE, ObstaclePattern.CROSS -> {
+            drawRoundRect(Color(0xFF4B4031), tl, sz, CornerRadius(14f * vp.scale))
+            drawLine(accent, Offset(tl.x + 12f, center.y), Offset(tl.x + sz.width - 12f, center.y), strokeWidth = 2.8f)
+        }
+        ObstaclePattern.SWAY -> {
+            drawRoundRect(Color(0xFF5A4A37), tl, sz, CornerRadius(16f * vp.scale))
+            drawRoundRect(Color(0xFF89704A).copy(alpha = 0.35f), tl, sz, CornerRadius(16f * vp.scale), style = Stroke(2f * vp.scale))
+        }
+    }
+    if (warning > 0f) drawCircle(Color(0xFF9FEFC7).copy(alpha = warning * 0.28f), max(sz.width, sz.height) * 0.7f, center)
+}
+
+private fun DrawScope.drawArcticObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+    val hex = Path().apply {
+        val w = sz.width; val h = sz.height
+        moveTo(tl.x + w * 0.15f, tl.y)
+        lineTo(tl.x + w * 0.85f, tl.y)
+        lineTo(tl.x + w, tl.y + h * 0.5f)
+        lineTo(tl.x + w * 0.85f, tl.y + h)
+        lineTo(tl.x + w * 0.15f, tl.y + h)
+        lineTo(tl.x, tl.y + h * 0.5f)
+        close()
+    }
+    drawPath(hex, color = Color(0xFFB5E7FF).copy(alpha = 0.9f))
+    drawPath(hex, color = Color.White.copy(alpha = 0.35f), style = Stroke(2f * vp.scale))
+    drawLine(Color.White.copy(alpha = 0.55f), Offset(tl.x + sz.width * 0.2f, tl.y + sz.height * 0.25f), Offset(tl.x + sz.width * 0.75f, tl.y + sz.height * 0.7f), strokeWidth = 1.4f)
+    drawLine(Color(0xFF7FDFFF).copy(alpha = 0.5f), Offset(tl.x + sz.width * 0.55f, tl.y + sz.height * 0.15f), Offset(tl.x + sz.width * 0.35f, tl.y + sz.height * 0.8f), strokeWidth = 1.2f)
+    if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.22f), max(sz.width, sz.height) * 0.75f, center)
+}
+
+private fun DrawScope.drawVolcanicObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+    drawRoundRect(Color(0xFF2A1711), tl, sz, CornerRadius(20f * vp.scale))
+    drawRoundRect(Color(0xFFFF7A3D).copy(alpha = 0.45f + warning * 0.35f), Offset(tl.x - 4f, tl.y - 4f), Size(sz.width + 8f, sz.height + 8f), CornerRadius(20f * vp.scale), style = Stroke(3f * vp.scale))
+    repeat(4) { i ->
+        val wobble = sin((o.driftPhase + i * 0.6f + warning * 4f).toDouble()).toFloat() * sz.height * 0.08f
+        drawLine(Color(0xFFFFB066).copy(alpha = 0.35f), Offset(tl.x + 8f, tl.y + sz.height * (0.2f + i * 0.18f)), Offset(tl.x + sz.width - 8f, tl.y + sz.height * (0.25f + i * 0.18f) + wobble), strokeWidth = 2f)
+    }
+    drawCircle(Color(0xFFFF8B4A).copy(alpha = 0.15f + warning * 0.15f), max(sz.width, sz.height) * 0.72f, center)
+}
+
+private fun DrawScope.drawCrystalObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+    val prism = Path().apply {
+        moveTo(tl.x + sz.width * 0.5f, tl.y)
+        lineTo(tl.x + sz.width, tl.y + sz.height * 0.35f)
+        lineTo(tl.x + sz.width * 0.78f, tl.y + sz.height)
+        lineTo(tl.x + sz.width * 0.22f, tl.y + sz.height)
+        lineTo(tl.x, tl.y + sz.height * 0.35f)
+        close()
+    }
+    drawPath(prism, brush = Brush.linearGradient(listOf(Color(0xFFB16DFF), Color(0xFF59E8FF), Color(0xFF1B2548)), start = tl, end = Offset(tl.x + sz.width, tl.y + sz.height)))
+    drawPath(prism, color = Color.White.copy(alpha = 0.4f), style = Stroke(2f * vp.scale))
+    drawLine(Color.White.copy(alpha = 0.7f), Offset(center.x, tl.y + 6f), Offset(center.x, tl.y + sz.height - 6f), strokeWidth = 1.4f)
+    if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.28f), max(sz.width, sz.height) * 0.75f, center)
+}
+
+private fun DrawScope.drawMidnightObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+    drawCircle(Color(0xFF162031), min(sz.width, sz.height) * 0.46f, center)
+    drawCircle(Color(0x552A58FF), min(sz.width, sz.height) * (0.5f + warning * 0.08f), center, style = Stroke(3f * vp.scale))
+    drawCircle(Color(0x2238D7FF), min(sz.width, sz.height) * 0.70f, center, style = Stroke(1.2f * vp.scale))
+    drawRoundRect(Color(0xFF5D657A).copy(alpha = 0.55f), Offset(tl.x + sz.width * 0.25f, tl.y + sz.height * 0.1f), Size(sz.width * 0.5f, sz.height * 0.8f), CornerRadius(10f * vp.scale))
+    repeat(3) { i -> drawCircle(Color(0xFF9ADFFF).copy(alpha = 0.4f), 2.2f * vp.scale, Offset(tl.x + sz.width * (0.35f + i * 0.15f), tl.y + sz.height * (0.2f + i * 0.22f))) }
+    if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.25f), max(sz.width, sz.height) * 0.8f, center)
 }
 
 /** 4 procedural hurdle textures: WOOD, STONE, ICE, LILY_PAD */
@@ -592,10 +689,46 @@ private fun DrawScope.drawPowerUpCollectibles(collectibles: List<PowerUpCollecti
 private fun DrawScope.drawBoosts(boosts: List<BoostState>, vp: ViewportMapping) {
     boosts.forEach { b ->
         val c = logicalToScreen(PointF(b.x, b.y), vp)
-        val r = b.radius * vp.scale
-        drawCircle(Color(0x3385FFF6), r * 1.4f, Offset(c.x, c.y))
-        drawCircle(Color(0xFF6CF4FF), r, Offset(c.x, c.y), style = Stroke(6f * vp.scale))
-        drawCircle(Color(0xFF48D9FF), r * 0.35f, Offset(c.x, c.y))
+        val r = b.radius * vp.scale * (0.82f + b.pulse * 0.2f)
+        val alpha = 0.65f + b.pulse * 0.35f
+        val glow = Color(b.kind.color).copy(alpha = 0.18f + b.pulse * 0.15f)
+        drawCircle(glow, r * 1.55f, Offset(c.x, c.y))
+        when (b.kind) {
+            BoostKind.GHOST -> {
+                drawCircle(Color(0xFFBDEBFF).copy(alpha = alpha), r * 0.9f, Offset(c.x, c.y))
+                drawCircle(Color(0xFFFFFFFF).copy(alpha = 0.35f), r * 0.35f, Offset(c.x, c.y + r * 0.05f))
+            }
+            BoostKind.SPEED -> {
+                drawPath(Path().apply {
+                    moveTo(c.x, c.y - r * 0.8f)
+                    lineTo(c.x + r * 0.24f, c.y - r * 0.1f)
+                    lineTo(c.x + r * 0.02f, c.y - r * 0.1f)
+                    lineTo(c.x + r * 0.18f, c.y + r * 0.8f)
+                    lineTo(c.x - r * 0.12f, c.y + r * 0.1f)
+                    lineTo(c.x + r * 0.08f, c.y + r * 0.1f)
+                    close()
+                }, Color(0xFFFFE45A).copy(alpha = alpha))
+            }
+            BoostKind.SHIELD -> {
+                drawCircle(Color(0xFF55F0C7).copy(alpha = alpha), r * 0.72f, Offset(c.x, c.y), style = Stroke(4f * vp.scale))
+                drawCircle(Color(0xFF55F0C7).copy(alpha = 0.22f), r * 0.95f, Offset(c.x, c.y), style = Stroke(2f * vp.scale))
+            }
+            BoostKind.MAGNET -> {
+                drawCircle(Color(0xFFFF79A8).copy(alpha = alpha), r * 0.72f, Offset(c.x, c.y), style = Stroke(5f * vp.scale))
+                drawLine(Color.White.copy(alpha = 0.85f), Offset(c.x - r * 0.24f, c.y - r * 0.18f), Offset(c.x - r * 0.05f, c.y + r * 0.18f), strokeWidth = 3f * vp.scale)
+                drawLine(Color.White.copy(alpha = 0.85f), Offset(c.x + r * 0.24f, c.y - r * 0.18f), Offset(c.x + r * 0.05f, c.y + r * 0.18f), strokeWidth = 3f * vp.scale)
+            }
+            BoostKind.SLOW_MO -> {
+                drawRoundRect(Color(0xFFB88CFF).copy(alpha = alpha), Offset(c.x - r * 0.22f, c.y - r * 0.55f), Size(r * 0.44f, r * 1.1f), CornerRadius(r * 0.2f), style = Stroke(3f * vp.scale))
+                drawLine(Color.White.copy(alpha = 0.65f), Offset(c.x - r * 0.12f, c.y), Offset(c.x + r * 0.12f, c.y), strokeWidth = 2f * vp.scale)
+            }
+            BoostKind.DOUBLE_SCORE -> {
+                drawCircle(Color(0xFFFF9E2C).copy(alpha = alpha), r * 0.82f, Offset(c.x, c.y))
+                drawCircle(Color(0xFFFFD9A1).copy(alpha = 0.6f), r * 0.5f, Offset(c.x, c.y))
+                drawLine(Color.White, Offset(c.x - r * 0.24f, c.y), Offset(c.x + r * 0.24f, c.y), strokeWidth = 4f * vp.scale)
+            }
+        }
+        drawCircle(Color.White.copy(alpha = 0.25f), r * 0.24f, Offset(c.x - r * 0.16f, c.y - r * 0.2f))
     }
 }
 
@@ -608,34 +741,37 @@ private fun GameOverScreen(
     onNewRun: () -> Unit, onBackToMenu: () -> Unit
 ) {
     val isNewHigh = score >= highScore && score > 0
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.78f)), contentAlignment = Alignment.Center) {
         if (isNewHigh) ConfettiAnimation(Modifier.fillMaxSize())
-        Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)), modifier = Modifier.fillMaxWidth().padding(32.dp)) {
-            Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(if (isNewHigh) "New High Score!" else "Game Over", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = if (isNewHigh) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                Text("$score", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 56.sp), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    StatColumn("Level", "$level"); StatColumn("Cleared", "$obstaclesCleared"); StatColumn("Best", "$highScore")
+        Card(
+            shape = RoundedCornerShape(30.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.11f)),
+            modifier = Modifier.fillMaxWidth().padding(24.dp)
+        ) {
+            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(if (isNewHigh) "NEW HIGH SCORE!" else "GAME OVER", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color.White)
+                Text("$score", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 60.sp), fontWeight = FontWeight.Black, color = Color(0xFF7CF0BF))
+                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    StatColumn("Level", "$level")
+                    StatColumn("Cleared", "$obstaclesCleared")
+                    StatColumn("Best", "$highScore")
                 }
-                // River Drops earned
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(16.dp)) {
+                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF19362D)), shape = RoundedCornerShape(16.dp)) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("\uD83D\uDCA7", fontSize = 20.sp); Spacer(Modifier.width(8.dp))
-                        Text("+$dropsEarned River Drops", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("+$dropsEarned River Drops", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
-                // Sensitivity suggestion
                 suggestion?.let {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), shape = RoundedCornerShape(12.dp)) {
-                        Text(it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f)), shape = RoundedCornerShape(12.dp)) {
+                        Text(it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = Color.White)
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                Button(onClick = onNewRun, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                    Icon(Icons.Filled.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Play Again")
+                Button(onClick = onNewRun, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF39D39B))) {
+                    Icon(Icons.Filled.RestartAlt, contentDescription = "Play Again"); Spacer(Modifier.width(8.dp)); Text("Play Again")
                 }
                 OutlinedButton(onClick = onBackToMenu, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-                    Icon(Icons.Filled.Home, null); Spacer(Modifier.width(8.dp)); Text("Menu")
+                    Icon(Icons.Filled.Home, contentDescription = "Menu"); Spacer(Modifier.width(8.dp)); Text("Menu")
                 }
             }
         }
@@ -651,7 +787,7 @@ private fun StatColumn(label: String, value: String) {
 }
 
 @Composable
-private fun ConfettiAnimation(modifier: Modifier = Modifier) {
+fun ConfettiAnimation(modifier: Modifier = Modifier) {
     val particles = remember {
         List(GameConstants.CONFETTI_COUNT) {
             ConfettiParticle(Random.nextFloat(), Random.nextFloat() * -1f, 0.2f + Random.nextFloat() * 0.5f, Random.nextFloat() * 360f,
@@ -708,15 +844,73 @@ private fun RiverEventBanner(modifier: Modifier, event: ActiveRiverEvent) {
 // ── UI: HUD, Pause, Tutorial, Settings, Score, Boost, Debug ─────────────────
 
 @Composable
-private fun BoxScope.IconHud(modifier: Modifier, iconScale: Float, isRunning: Boolean, soundEnabled: Boolean, onPauseToggle: () -> Unit, onSettingsRequested: () -> Unit, onSoundToggle: () -> Unit) {
-    val ts = (48f * iconScale).dp; val is2 = (28f * iconScale).dp
-    Row(modifier.fillMaxWidth().padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-        FilledIconButton(onPauseToggle, Modifier.size(ts), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))) {
-            Icon(if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, Modifier.size(is2))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onSettingsRequested, Modifier.size(ts)) { Icon(Icons.Filled.Tune, "Settings", Modifier.size(is2)) }
-            IconButton(onSoundToggle, Modifier.size(ts)) { Icon(if (soundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff, "Sound", Modifier.size(is2)) }
+private fun BoxScope.IconHud(
+    modifier: Modifier,
+    iconScale: Float,
+    isRunning: Boolean,
+    soundEnabled: Boolean,
+    score: Int,
+    bestScore: Int,
+    level: Int,
+    obstaclesCleared: Int,
+    drops: Int,
+    difficultyLabel: String,
+    hudOpacity: Float,
+    showSpeedIndicator: Boolean,
+    onPauseToggle: () -> Unit,
+    onSettingsRequested: () -> Unit,
+    onSoundToggle: () -> Unit
+) {
+    val ts = (38f * iconScale).dp
+    val is2 = (20f * iconScale).dp
+    val levelProgress = (obstaclesCleared % GameConstants.HURDLES_PER_LEVEL).toFloat() / GameConstants.HURDLES_PER_LEVEL.toFloat()
+    val animatedScore by animateIntAsState(score, label = "hudScore")
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = Color.Black.copy(alpha = 0.45f * hudOpacity),
+        tonalElevation = 0.dp
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Filled.Leaderboard, contentDescription = "Score", tint = Color(0xFF8FF5C8), modifier = Modifier.size(16.dp))
+                        Text("$animatedScore", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = Color.White)
+                    }
+                    Text("Best: $bestScore", style = MaterialTheme.typography.labelSmall, color = Color(0xCCFFFFFF))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("LVL $level", style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                    if (showSpeedIndicator) {
+                        LinearProgressIndicator(
+                            progress = { levelProgress.coerceIn(0f, 1f) },
+                            modifier = Modifier.width(84.dp).height(4.dp),
+                            color = Color(0xFF39D39B),
+                            trackColor = Color.White.copy(alpha = 0.14f)
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("\uD83D\uDCA7 $drops", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0xFF39D39B).copy(alpha = 0.22f)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Text(difficultyLabel, color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(onPauseToggle, Modifier.size(48.dp)) {
+                        Icon(if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (isRunning) "Pause" else "Resume", modifier = Modifier.size(is2), tint = Color.White)
+                    }
+                    IconButton(onSoundToggle, Modifier.size(48.dp)) {
+                        Icon(if (soundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff, contentDescription = if (soundEnabled) "Sound On" else "Sound Off", modifier = Modifier.size(is2), tint = Color.White)
+                    }
+                    IconButton(onSettingsRequested, Modifier.size(48.dp)) {
+                        Icon(Icons.Filled.Tune, contentDescription = "Settings", modifier = Modifier.size(is2), tint = Color.White)
+                    }
+                }
+            }
         }
     }
 }
@@ -725,9 +919,9 @@ private fun BoxScope.IconHud(modifier: Modifier, iconScale: Float, isRunning: Bo
 private fun PauseOverlay(onResume: () -> Unit, onRestart: () -> Unit, onSettings: () -> Unit, onBackToMenu: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            LargeIconButton(Icons.Filled.PlayArrow, onResume)
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) { LargeIconButton(Icons.Filled.RestartAlt, onRestart); LargeIconButton(Icons.Filled.Settings, onSettings) }
-            LargeIconButton(Icons.Filled.Home, onBackToMenu)
+            LargeIconButton(Icons.Filled.PlayArrow, onResume, description = "Resume")
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) { LargeIconButton(Icons.Filled.RestartAlt, onRestart, description = "Restart"); LargeIconButton(Icons.Filled.Settings, onSettings, description = "Settings") }
+            LargeIconButton(Icons.Filled.Home, onBackToMenu, description = "Back to Menu")
         }
     }
 }
@@ -736,7 +930,7 @@ private fun PauseOverlay(onResume: () -> Unit, onRestart: () -> Unit, onSettings
 private fun TutorialOverlay(modifier: Modifier = Modifier, controlMode: ControlMode) {
     Card(modifier, shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))) {
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(if (controlMode == ControlMode.TOUCH) Icons.Filled.TouchApp else Icons.Filled.Tune, null)
+            Icon(if (controlMode == ControlMode.TOUCH) Icons.Filled.TouchApp else Icons.Filled.Tune, contentDescription = if (controlMode == ControlMode.TOUCH) "Touch tutorial" else "Tilt tutorial")
             Text(when (controlMode) {
                 ControlMode.TOUCH -> "Drag to steer the leaf."
                 ControlMode.TAP -> "Tap left/right to steer."
@@ -755,18 +949,24 @@ private fun SettingsPanel(
     onDampingChanged: (Float) -> Unit, onHitboxChanged: (Float) -> Unit,
     onDeadZoneChanged: (Float) -> Unit, onInstantSnapChanged: (Boolean) -> Unit,
     onControlModeChanged: (ControlMode) -> Unit, onPresetSelected: (SensitivityPreset) -> Unit,
-    onCalibrate: () -> Unit, onClose: () -> Unit, onReset: () -> Unit
+    onCalibrate: () -> Unit, onClose: () -> Unit, onReset: () -> Unit,
+    onMusicVolumeChanged: (Float) -> Unit, onSfxVolumeChanged: (Float) -> Unit, onHapticsChanged: (Boolean) -> Unit,
+    onDifficultyChanged: (DifficultyPreset) -> Unit, onShowSpeedIndicatorChanged: (Boolean) -> Unit, onShowTrailEffectChanged: (Boolean) -> Unit
 ) {
+    var confirmReset by rememberSaveable { mutableStateOf(false) }
     Surface(Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(28.dp), tonalElevation = 8.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
         Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClose, Modifier.size(48.dp)) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back") }
+                Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            }
             // Control mode
             SettingsSection("Control Mode", "Choose touch drag, tap-steer, or gyroscope.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (mode in ControlMode.entries) {
-                        AssistChip(onClick = { onControlModeChanged(mode) },
+                        for (mode in ControlMode.entries) {
+                        AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onControlModeChanged(mode) },
                             label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                            leadingIcon = if (settings.controlMode == mode) { { Icon(if (mode == ControlMode.TOUCH) Icons.Filled.TouchApp else Icons.Filled.Tune, null, Modifier.size(16.dp)) } } else null,
+                            leadingIcon = if (settings.controlMode == mode) { { Icon(if (mode == ControlMode.TOUCH) Icons.Filled.TouchApp else Icons.Filled.Tune, contentDescription = "Mode ${mode.name}", Modifier.size(16.dp)) } } else null,
                             colors = AssistChipDefaults.assistChipColors(containerColor = if (settings.controlMode == mode) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
                     }
                 }
@@ -775,7 +975,7 @@ private fun SettingsPanel(
             SettingsSection("Sensitivity Presets") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (p in SensitivityPreset.entries) {
-                        AssistChip(onClick = { onPresetSelected(p) },
+                        AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onPresetSelected(p) },
                             label = { Text(p.name.lowercase().replaceFirstChar { it.uppercase() }) },
                             colors = AssistChipDefaults.assistChipColors(containerColor = if (settings.preset == p) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
                     }
@@ -795,16 +995,39 @@ private fun SettingsPanel(
                 LabeledSwitch("Invert horizontal tilt", settings.invertTilt, onInvertChanged)
                 LabeledSwitch("Instant snap", settings.instantSnap, onInstantSnapChanged)
             }
+            SettingsSection("Audio") {
+                SettingsSlider("Music ${settings.musicVolume.fmt(2)}", settings.musicVolume, 0f..1f, onMusicVolumeChanged)
+                SettingsSlider("SFX ${settings.sfxVolume.fmt(2)}", settings.sfxVolume, 0f..1f, onSfxVolumeChanged)
+                LabeledSwitch("Haptic feedback", settings.hapticsEnabled, onHapticsChanged)
+            }
+            SettingsSection("Gameplay") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DifficultyPreset.entries.forEach { preset ->
+                        AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onDifficultyChanged(preset) }, label = { Text(preset.displayName) }, colors = AssistChipDefaults.assistChipColors(containerColor = if (settings.difficultyPreset == preset) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
+                    }
+                }
+                LabeledSwitch("Show speed indicator", settings.showSpeedIndicator, onShowSpeedIndicatorChanged)
+                LabeledSwitch("Show trail effect", settings.showTrailEffect, onShowTrailEffectChanged)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onCalibrate) { Text("Calibrate") }
-                OutlinedButton(onClick = onReset) { Text("Reset") }
+                OutlinedButton(onClick = { confirmReset = true }) { Text("Reset") }
                 Spacer(Modifier.weight(1f))
-                FilledIconButton(onClick = onClose) { Icon(Icons.Filled.PlayArrow, null) }
+                FilledIconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.PlayArrow, contentDescription = "Close") }
             }
             Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
                 Text("Tip: EXPONENTIAL curve + moderate damping is great for precise dodging.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(14.dp))
             }
         }
+    }
+    if (confirmReset) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("Reset settings?") },
+            text = { Text("This will restore all controls, audio, and gameplay settings to defaults.") },
+            confirmButton = { TextButton(onClick = { confirmReset = false; onReset() }) { Text("Reset") } },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -828,7 +1051,7 @@ private fun DebugPanel(modifier: Modifier, t: DebugTelemetry) {
 private fun ScoreChip(modifier: Modifier, score: Int, highScore: Int, drops: Int) {
     Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), elevation = CardDefaults.cardElevation(4.dp)) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Filled.Leaderboard, null)
+            Icon(Icons.Filled.Leaderboard, contentDescription = "Score")
             Column {
                 Text("Score $score", fontWeight = FontWeight.Bold)
                 Text("Best $highScore", style = MaterialTheme.typography.bodySmall)
@@ -850,11 +1073,11 @@ private fun BoostMeter(modifier: Modifier, boostActive: Boolean, remaining: Floa
     }
 }
 
-@Composable private fun LargeIconButton(icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FilledIconButton(onClick, modifier.size(64.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)) { Icon(icon, null, tint = Color.White) }
+@Composable private fun LargeIconButton(icon: ImageVector, onClick: () -> Unit, description: String? = null, modifier: Modifier = Modifier) {
+    FilledIconButton(onClick, modifier.size(64.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)) { Icon(icon, contentDescription = description, tint = Color.White) }
 }
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun SettingsSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
+@Composable fun SettingsSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -881,8 +1104,8 @@ private fun BoostMeter(modifier: Modifier, boostActive: Boolean, remaining: Floa
 @Composable private fun CurveSelector(current: SensitivityCurve, onCurveChange: (SensitivityCurve) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         for (c in SensitivityCurve.entries) {
-            AssistChip(onClick = { onCurveChange(c) }, label = { Text(c.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                leadingIcon = if (current == c) { { Icon(Icons.Filled.Tune, null, Modifier.size(16.dp)) } } else null,
+            AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onCurveChange(c) }, label = { Text(c.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                leadingIcon = if (current == c) { { Icon(Icons.Filled.Tune, contentDescription = "Active $c", Modifier.size(16.dp)) } } else null,
                 colors = AssistChipDefaults.assistChipColors(containerColor = if (current == c) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
         }
     }
@@ -893,11 +1116,11 @@ private fun BoostMeter(modifier: Modifier, boostActive: Boolean, remaining: Floa
         content()
     }
 }
-@Composable private fun LabeledSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+@Composable fun LabeledSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Switch(checked, onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary, checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)))
     }
 }
 
-private fun Float.fmt(d: Int): String = "%.${d}f".format(this)
+fun Float.fmt(d: Int): String = "%.${d}f".format(this)

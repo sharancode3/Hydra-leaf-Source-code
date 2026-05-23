@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sign
 import kotlin.math.sin
@@ -28,15 +29,30 @@ import kotlin.random.Random
 
 enum class ObstacleKind { LOG, ROCK }
 
+enum class ObstaclePattern { LEFT, RIGHT, CENTER, DOUBLE, SWAY, CROSS }
+
+enum class BoostKind(val displayName: String, val color: Int) {
+    GHOST("Ghost", 0xFF8BD3FF.toInt()),
+    SPEED("Speed", 0xFFFFD83D.toInt()),
+    SHIELD("Shield", 0xFF44F0C5.toInt()),
+    MAGNET("Magnet", 0xFFFF6AA8.toInt()),
+    SLOW_MO("Slow", 0xFFB88CFF.toInt()),
+    DOUBLE_SCORE("x2", 0xFFFF9E2C.toInt())
+}
+
 data class ObstacleState(
     val id: Long, val x: Float, val y: Float,
     val width: Float, val height: Float,
     val warningHighlight: Float = 0f,
     val kind: ObstacleKind = ObstacleKind.LOG,
-    val hurdleStyle: HurdleStyle = HurdleStyle.WOOD
+    val hurdleStyle: HurdleStyle = HurdleStyle.WOOD,
+    val pattern: ObstaclePattern = ObstaclePattern.LEFT,
+    val variant: Int = 0,
+    val driftPhase: Float = 0f,
+    val entryProgress: Float = 1f
 )
 
-data class BoostState(val id: Long, val x: Float, val y: Float, val radius: Float)
+data class BoostState(val id: Long, val x: Float, val y: Float, val radius: Float, val kind: BoostKind = BoostKind.SPEED, val pulse: Float = 0f)
 
 data class PowerUpCollectible(
     val id: Long, val x: Float, val y: Float,
@@ -90,8 +106,23 @@ data class GameUiState(
     val activeRiverEvent: ActiveRiverEvent? = null,
     val riverDrops: Int = 0,
     val totalRiverDrops: Int = 0,
+    val totalDropsEverCollected: Int = 0,
+    val totalGamesPlayed: Int = 0,
+    val lastScore: Int = 0,
     val leafSkin: LeafSkin = LeafSkin.CLASSIC,
     val riverTheme: RiverTheme = RiverTheme.FOREST,
+    val difficultyPreset: DifficultyPreset = DifficultyPreset.NORMAL,
+    val musicVolume: Float = 0.8f,
+    val sfxVolume: Float = 0.9f,
+    val hapticsEnabled: Boolean = true,
+    val showSpeedIndicator: Boolean = true,
+    val showTrailEffect: Boolean = true,
+    val showNearMissFlash: Boolean = true,
+    val hudOpacity: Float = 0.9f,
+    val particleDensity: ParticleDensity = ParticleDensity.MEDIUM,
+    val runHistory: List<RunRecord> = emptyList(),
+    val achievements: List<AchievementProgress> = AchievementType.entries.map { AchievementProgress(it) },
+    val longestRunTime: Float = 0f,
     val dayPhase: DayPhase = DayPhase.DAY,
     val dayCycleProgress: Float = 0f,
     val trailParticles: List<TrailParticle> = emptyList(),
@@ -103,7 +134,9 @@ data class GameUiState(
     val fogAlpha: Float = 0f,
     val narrowChannelOffset: Float = 0f,
     val runDropsEarned: Int = 0,
-    val sensitivitySuggestion: String? = null
+    val sensitivitySuggestion: String? = null,
+    val recentUnlock: AchievementType? = null,
+    val recentCelebration: String? = null
 ) {
     val gameState: GameState get() = when (phase) {
         GamePhase.PLAYING, GamePhase.COUNTDOWN, GamePhase.CALIBRATING -> GameState.RUNNING
@@ -121,13 +154,18 @@ private data class ObstacleEntity(
     var width: Float, var height: Float, var speed: Float,
     var kind: ObstacleKind, var style: HurdleStyle = HurdleStyle.WOOD,
     var rowToken: Int = 0,
+    var pattern: ObstaclePattern = ObstaclePattern.LEFT,
+    var variant: Int = 0,
+    var driftPhase: Float = 0f,
+    var entryAge: Float = 0f,
     var counted: Boolean = false,
     var warningHighlight: Float = 0f, var warningTriggered: Boolean = false
 )
 
 private data class BoostEntity(
     var id: Long, var x: Float, var y: Float,
-    var radius: Float, var speed: Float, var collected: Boolean = false
+    var radius: Float, var speed: Float, var kind: BoostKind = BoostKind.SPEED, var collected: Boolean = false,
+    var age: Float = 0f
 )
 
 private data class PowerUpEntity(
@@ -220,14 +258,41 @@ class GameViewModel @Inject constructor(
     private var currentFps = 60
 
     init {
-        viewModelScope.launch { playerSettingsStore.settingsFlow.collectLatest { s -> _settings.value = s; _uiState.value = _uiState.value.copy(controlSettings = s) } }
+        viewModelScope.launch { playerSettingsStore.settingsFlow.collectLatest { s ->
+            _settings.value = s
+            audioEngine.musicVolume = s.musicVolume
+            audioEngine.sfxVolume = s.sfxVolume
+            _uiState.value = _uiState.value.copy(
+                controlSettings = s,
+                difficultyPreset = s.difficultyPreset,
+                musicVolume = s.musicVolume,
+                sfxVolume = s.sfxVolume,
+                hapticsEnabled = s.hapticsEnabled,
+                showSpeedIndicator = s.showSpeedIndicator,
+                showTrailEffect = s.showTrailEffect,
+                showNearMissFlash = s.showNearMissFlash,
+                hudOpacity = s.hudOpacity,
+                particleDensity = s.particleDensity
+            )
+        } }
         viewModelScope.launch { playerSettingsStore.highScoreFlow.collectLatest { _uiState.value = _uiState.value.copy(highScore = it) } }
+        viewModelScope.launch { playerSettingsStore.lastScoreFlow.collectLatest { _uiState.value = _uiState.value.copy(lastScore = it) } }
+        viewModelScope.launch { playerSettingsStore.totalGamesPlayedFlow.collectLatest { _uiState.value = _uiState.value.copy(totalGamesPlayed = it) } }
+        viewModelScope.launch { playerSettingsStore.totalDropsEverCollectedFlow.collectLatest { _uiState.value = _uiState.value.copy(totalDropsEverCollected = it) } }
         viewModelScope.launch { playerSettingsStore.soundEnabledFlow.collectLatest { _uiState.value = _uiState.value.copy(soundEnabled = it); audioEngine.soundEnabled = it } }
         viewModelScope.launch { playerSettingsStore.tutorialSeenFlow.collectLatest { _uiState.value = _uiState.value.copy(showTutorial = !it) } }
         viewModelScope.launch { playerSettingsStore.riverDropsFlow.collectLatest { storedDrops = it; _uiState.value = _uiState.value.copy(totalRiverDrops = it) } }
         viewModelScope.launch { playerSettingsStore.activeLeafSkinFlow.collectLatest { activeSkin = it; _uiState.value = _uiState.value.copy(leafSkin = it) } }
         viewModelScope.launch { playerSettingsStore.activeRiverThemeFlow.collectLatest { activeTheme = it; _uiState.value = _uiState.value.copy(riverTheme = it) } }
+        viewModelScope.launch { playerSettingsStore.runHistoryFlow.collectLatest { history -> _uiState.value = _uiState.value.copy(runHistory = history, longestRunTime = history.maxOfOrNull { it.durationSec } ?: 0f) } }
+        viewModelScope.launch { playerSettingsStore.achievementsFlow.collectLatest { _uiState.value = _uiState.value.copy(achievements = it) } }
         viewModelScope.launch { totalPlaytime = playerSettingsStore.totalPlaytimeFlow.first() }
+    }
+
+    private fun showCelebration(message: String) = viewModelScope.launch {
+        _uiState.value = _uiState.value.copy(recentCelebration = message)
+        delay(1600)
+        _uiState.value = _uiState.value.copy(recentCelebration = null)
     }
 
     // ── Phase transitions ────────────────────────────────────────────────────
@@ -241,6 +306,15 @@ class GameViewModel @Inject constructor(
             soundEnabled = _uiState.value.soundEnabled,
             leafSkin = activeSkin,
             riverTheme = activeTheme,
+            difficultyPreset = _settings.value.difficultyPreset,
+            musicVolume = _settings.value.musicVolume,
+            sfxVolume = _settings.value.sfxVolume,
+            hapticsEnabled = _settings.value.hapticsEnabled,
+            showSpeedIndicator = _settings.value.showSpeedIndicator,
+                showTrailEffect = _settings.value.showTrailEffect,
+                showNearMissFlash = _settings.value.showNearMissFlash,
+                hudOpacity = _settings.value.hudOpacity,
+                particleDensity = _settings.value.particleDensity,
             totalRiverDrops = storedDrops,
             dailyChallenge = resolveDailyChallenge()
         )
@@ -290,17 +364,43 @@ class GameViewModel @Inject constructor(
     private fun transitionToGameOver() {
         val cur = _uiState.value
         if (cur.score > cur.highScore) viewModelScope.launch { playerSettingsStore.setHighScore(cur.score) }
-        // Award currency
         viewModelScope.launch {
             playerSettingsStore.addRiverDrops(runDrops)
             playerSettingsStore.addPlaytime(runTime)
+            playerSettingsStore.recordRun(
+                RunRecord(
+                    score = cur.score,
+                    level = cur.level,
+                    drops = runDrops,
+                    durationSec = runTime,
+                    dateEpochMillis = System.currentTimeMillis(),
+                    skin = cur.leafSkin,
+                    theme = cur.riverTheme,
+                    difficulty = cur.difficultyPreset
+                )
+            )
+            val achievements = cur.achievements.toMutableList()
+            fun unlock(type: AchievementType, progress: Float = 1f) {
+                val index = achievements.indexOfFirst { it.type == type }
+                if (index >= 0) {
+                    val current = achievements[index]
+                    achievements[index] = current.copy(unlocked = true, claimed = true, progress = max(current.progress, progress))
+                }
+            }
+            unlock(AchievementType.FIRST_FLIGHT)
+            if (runTime >= 60f) unlock(AchievementType.SURVIVOR)
+            if (cur.score >= 500) unlock(AchievementType.SPEED_DEMON, cur.score.toFloat())
+            if (cur.totalDropsEverCollected >= AchievementType.DROP_COLLECTOR.target) unlock(AchievementType.DROP_COLLECTOR, cur.totalDropsEverCollected.toFloat())
+            playerSettingsStore.saveAchievements(achievements)
         }
         audioEngine.stop()
         val suggestion = generateSensitivitySuggestion()
         _uiState.value = cur.copy(
             phase = GamePhase.GAME_OVER, pauseOverlayVisible = false,
             runDropsEarned = runDrops,
-            sensitivitySuggestion = suggestion
+            sensitivitySuggestion = suggestion,
+            lastScore = cur.score,
+            recentUnlock = cur.achievements.firstOrNull { !it.unlocked && it.type == AchievementType.FIRST_FLIGHT }?.type
         )
     }
 
@@ -368,6 +468,15 @@ class GameViewModel @Inject constructor(
     fun setInstantSnap(v: Boolean) = viewModelScope.launch { playerSettingsStore.setInstantSnap(v) }
     fun setControlMode(m: ControlMode) = viewModelScope.launch { playerSettingsStore.setControlMode(m) }
     fun applyPreset(p: SensitivityPreset) = viewModelScope.launch { playerSettingsStore.applyPreset(p) }
+    fun setDifficultyPreset(v: DifficultyPreset) = viewModelScope.launch { playerSettingsStore.setDifficultyPreset(v) }
+    fun setMusicVolume(v: Float) = viewModelScope.launch { playerSettingsStore.setMusicVolume(v) ; audioEngine.musicVolume = v }
+    fun setSfxVolume(v: Float) = viewModelScope.launch { playerSettingsStore.setSfxVolume(v); audioEngine.sfxVolume = v }
+    fun setHapticsEnabled(v: Boolean) = viewModelScope.launch { playerSettingsStore.setHapticsEnabled(v) }
+    fun setShowSpeedIndicator(v: Boolean) = viewModelScope.launch { playerSettingsStore.setShowSpeedIndicator(v) }
+    fun setShowTrailEffect(v: Boolean) = viewModelScope.launch { playerSettingsStore.setShowTrailEffect(v) }
+    fun setShowNearMissFlash(v: Boolean) = viewModelScope.launch { playerSettingsStore.setShowNearMissFlash(v) }
+    fun setHudOpacity(v: Float) = viewModelScope.launch { playerSettingsStore.setHudOpacity(v) }
+    fun setParticleDensity(v: ParticleDensity) = viewModelScope.launch { playerSettingsStore.setParticleDensity(v) }
     fun calibrate() = viewModelScope.launch {
         val values = recentTiltX.toList()
         if (values.size < 8) return@launch
@@ -381,14 +490,32 @@ class GameViewModel @Inject constructor(
     }
     fun resetSettings() = viewModelScope.launch { playerSettingsStore.resetSettingsToDefaults(); playerSettingsStore.setTutorialSeen(false) }
 
+    // Claim the daily challenge reward if completed and not already claimed
+    fun claimDailyChallenge() = viewModelScope.launch {
+        val daily = _uiState.value.dailyChallenge ?: return@launch
+        if (!daily.completed) return@launch
+        val already = playerSettingsStore.dailyChallengeCompleted.first()
+        if (already) return@launch
+        playerSettingsStore.addRiverDrops(daily.type.rewardDrops)
+        playerSettingsStore.setDailyChallenge(daily.dayIndex, true)
+        showCelebration("Claimed ${daily.type.rewardDrops} drops")
+    }
+
     // ── Shop ─────────────────────────────────────────────────────────────────
 
     fun purchaseSkin(skin: LeafSkin) = viewModelScope.launch {
         if (playerSettingsStore.spendRiverDrops(skin.cost)) { playerSettingsStore.unlockSkin(skin); playerSettingsStore.setActiveSkin(skin) }
     }
+    fun purchaseSkinWithCelebration(skin: LeafSkin) = viewModelScope.launch {
+        if (playerSettingsStore.spendRiverDrops(skin.cost)) {
+            playerSettingsStore.unlockSkin(skin)
+            playerSettingsStore.setActiveSkin(skin)
+            showCelebration("Unlocked ${skin.displayName}")
+        }
+    }
     fun selectSkin(skin: LeafSkin) = viewModelScope.launch { playerSettingsStore.setActiveSkin(skin) }
     fun purchaseTheme(theme: RiverTheme) = viewModelScope.launch {
-        if (playerSettingsStore.spendRiverDrops(theme.cost)) { playerSettingsStore.unlockTheme(theme); playerSettingsStore.setActiveTheme(theme) }
+        if (playerSettingsStore.spendRiverDrops(theme.cost)) { playerSettingsStore.unlockTheme(theme); playerSettingsStore.setActiveTheme(theme); showCelebration("Unlocked ${theme.displayName}") }
     }
     fun selectTheme(theme: RiverTheme) = viewModelScope.launch { playerSettingsStore.setActiveTheme(theme) }
 
@@ -479,11 +606,29 @@ class GameViewModel @Inject constructor(
         }
 
         // Event effects
+        val difficultySpeedMultiplier = when (cur.difficultyPreset) {
+            DifficultyPreset.EASY -> 0.82f
+            DifficultyPreset.NORMAL -> 1f
+            DifficultyPreset.HARD -> 1.15f
+            DifficultyPreset.EXTREME -> 1.28f
+        }
+        val difficultySpawnMultiplier = when (cur.difficultyPreset) {
+            DifficultyPreset.EASY -> 1.25f
+            DifficultyPreset.NORMAL -> 1f
+            DifficultyPreset.HARD -> 0.85f
+            DifficultyPreset.EXTREME -> 0.72f
+        }
+        val difficultyPowerUpMultiplier = when (cur.difficultyPreset) {
+            DifficultyPreset.EASY -> 0.78f
+            DifficultyPreset.NORMAL -> 1f
+            DifficultyPreset.HARD -> 1.18f
+            DifficultyPreset.EXTREME -> 1.4f
+        }
         val speedMult = when (currentEvent?.type) {
             RiverEventType.SPEED_SURGE -> GameConstants.SPEED_SURGE_MULTIPLIER
             RiverEventType.CALM_WATERS -> GameConstants.CALM_SPEED_MULTIPLIER
             else -> 1f
-        } * adaptiveDiff.speedMultiplier
+        } * adaptiveDiff.speedMultiplier * difficultySpeedMultiplier
         val fogAlpha = if (currentEvent?.type == RiverEventType.FOG) GameConstants.FOG_MAX_ALPHA * (currentEvent?.intensity ?: 0f) else 0f
         val narrowOffset = if (currentEvent?.type == RiverEventType.NARROW_CHANNEL) (GameConstants.VIRTUAL_WIDTH - GameConstants.NARROW_CHANNEL_WIDTH) * 0.5f else 0f
 
@@ -499,12 +644,12 @@ class GameViewModel @Inject constructor(
         powerUpSpawnTimer -= dt
         if (powerUpSpawnTimer <= 0f) {
             spawnPowerUp()
-            powerUpSpawnTimer = GameConstants.POWERUP_SPAWN_INTERVAL + Random.nextFloat() * GameConstants.POWERUP_SPAWN_VARIATION - adaptiveDiff.powerUpFrequencyBonus
+            powerUpSpawnTimer = (GameConstants.POWERUP_SPAWN_INTERVAL + Random.nextFloat() * GameConstants.POWERUP_SPAWN_VARIATION - adaptiveDiff.powerUpFrequencyBonus) * difficultyPowerUpMultiplier
         }
 
         // ── Boost spawn ──────────────────────────────────────────────────────
         boostSpawnTimer -= dt
-        if (boostSpawnTimer <= 0f) { spawnBoost(); boostSpawnTimer = GameConstants.BOOST_SPAWN_INTERVAL + Random.nextFloat() * GameConstants.BOOST_SPAWN_VARIATION }
+        if (boostSpawnTimer <= 0f) { spawnBoost(); boostSpawnTimer = (GameConstants.BOOST_SPAWN_INTERVAL + Random.nextFloat() * GameConstants.BOOST_SPAWN_VARIATION) * difficultyPowerUpMultiplier }
         boostTimer = max(0f, boostTimer - dt)
 
         // ── Leaf physics ─────────────────────────────────────────────────────
@@ -569,7 +714,7 @@ class GameViewModel @Inject constructor(
 
         val powerUpCollected = updatePowerUps(effectiveDt, leafRect, magnetActive)
         // Update obstacles
-        val obstResult = updateObstacles(effectiveDt, leafRect, cur.level, cur.score, speedMult)
+        val obstResult = updateObstacles(effectiveDt, leafRect, cur.level, cur.score, speedMult, cur.difficultyPreset)
         val collided = obstResult.collided && !boostActive && !shieldActive
 
         // ── Scoring ──────────────────────────────────────────────────────────
@@ -638,13 +783,13 @@ class GameViewModel @Inject constructor(
         _uiState.value = cur.copy(
             leafX = leafX, leafY = leafY, leafVelocityX = vx, leafVelocityY = vy,
             targetX = targetX, targetY = targetY,
-            obstacles = activeObstacles.map { o -> ObstacleState(o.id, o.x, o.y, o.width, o.height, o.warningHighlight, o.kind, o.style) },
+            obstacles = activeObstacles.map { o -> ObstacleState(o.id, o.x, o.y, o.width, o.height, o.warningHighlight, o.kind, o.style, o.pattern, o.variant, o.driftPhase, o.entryAge.coerceIn(0f, 0.3f) / 0.3f) },
             score = newScore, highScore = highScore,
             obstaclesCleared = clearedTotal, level = newLevel,
             phase = if (collided) cur.phase else GamePhase.PLAYING,
             lastTiltSample = tiltSample, lastDeltaTime = dt,
             debugTelemetry = debugTelemetry,
-            boosts = activeBoosts.map { BoostState(it.id, it.x, it.y, it.radius) },
+            boosts = activeBoosts.map { BoostState(it.id, it.x, it.y, it.radius, it.kind, (it.age / 0.4f).coerceIn(0f, 1f)) },
             boostActive = boostActive, boostTimeRemaining = boostTimer,
             activePowerUps = activePowerUpList,
             powerUpCollectibles = activePowerUpEntities.map { PowerUpCollectible(it.id, it.x, it.y, it.radius, it.type) },
@@ -662,16 +807,22 @@ class GameViewModel @Inject constructor(
 
     // ── Obstacle logic ───────────────────────────────────────────────────────
 
-    private fun updateObstacles(dt: Float, leafRect: RectF, level: Int, score: Int, speedMult: Float): ObstacleUpdateResult {
+    private fun updateObstacles(dt: Float, leafRect: RectF, level: Int, score: Int, speedMult: Float, difficultyPreset: DifficultyPreset): ObstacleUpdateResult {
         spawnTimer -= dt
         if (spawnTimer <= 0f) {
             if (canSpawnRow(level)) {
-                spawnSafeRow(level)
+                spawnSafeRow(level, difficultyPreset)
                 val baseInterval = GameConstants.OBSTACLE_SPAWN_INTERVAL
                 val minInterval = GameConstants.SPAWN_INTERVAL_FLOOR
                 val scoreFactor = score / 600f
                 val levelFactor = (level - 1) * 0.05f
-                val diffScale = max(GameConstants.SPEED_HARD_FLOOR, 1f - scoreFactor - levelFactor) * adaptiveDiff.spawnRateMultiplier
+                val difficultySpawnFactor = when (difficultyPreset) {
+                    DifficultyPreset.EASY -> 1.25f
+                    DifficultyPreset.NORMAL -> 1f
+                    DifficultyPreset.HARD -> 0.85f
+                    DifficultyPreset.EXTREME -> 0.72f
+                }
+                val diffScale = max(GameConstants.SPEED_HARD_FLOOR, 1f - scoreFactor - levelFactor) * adaptiveDiff.spawnRateMultiplier * difficultySpawnFactor
                 spawnTimer = max(minInterval, baseInterval * diffScale)
             } else {
                 spawnTimer = 0.08f
@@ -682,7 +833,12 @@ class GameViewModel @Inject constructor(
         val iter = activeObstacles.iterator()
         while (iter.hasNext()) {
             val o = iter.next()
+            o.entryAge = min(0.3f, o.entryAge + dt)
             o.y += o.speed * speedMult * dt
+            if (o.pattern == ObstaclePattern.SWAY || o.pattern == ObstaclePattern.CROSS) {
+                val sway = sin((o.entryAge * 10f + o.driftPhase).toDouble()).toFloat()
+                o.x += sway * 0.8f * dt * 60f
+            }
             if (!o.warningTriggered && o.y >= warningY) { o.warningTriggered = true; o.warningHighlight = 1f }
             if (o.warningHighlight > 0f) o.warningHighlight = max(0f, o.warningHighlight - dt * 1.25f)
             val oR = RectF(o.x - o.width * 0.5f, o.y - o.height * 0.5f, o.x + o.width * 0.5f, o.y + o.height * 0.5f)
@@ -718,38 +874,89 @@ class GameViewModel @Inject constructor(
         return true
     }
 
-    private fun spawnSafeRow(level: Int) {
+    private fun spawnSafeRow(level: Int, difficultyPreset: DifficultyPreset) {
         val vw = GameConstants.VIRTUAL_WIDTH
-        val gap = GameConstants.SAFE_GAP_MIN_WIDTH.coerceAtLeast(160f)
-        val count = if (level <= 1) 2 else Random.nextInt(1, GameConstants.MAX_OBSTACLES_PER_ROW + 1)
+        val gapScale = when (difficultyPreset) {
+            DifficultyPreset.EASY -> 1.25f
+            DifficultyPreset.NORMAL -> 1f
+            DifficultyPreset.HARD -> 0.88f
+            DifficultyPreset.EXTREME -> 0.76f
+        }
+        val gap = (GameConstants.SAFE_GAP_MIN_WIDTH * gapScale).coerceAtLeast(150f)
         val rowToken = nextRowToken++
-        // Pick one of 4 hurdle styles based on level progression
+        val pattern = when {
+            level >= 6 && Random.nextFloat() < 0.22f -> ObstaclePattern.CROSS
+            level >= 6 && Random.nextFloat() < 0.45f -> ObstaclePattern.DOUBLE
+            level >= 4 && Random.nextFloat() < 0.35f -> ObstaclePattern.SWAY
+            level >= 3 && Random.nextFloat() < 0.35f -> ObstaclePattern.CENTER
+            nextGapOnLeft -> ObstaclePattern.LEFT
+            else -> ObstaclePattern.RIGHT
+        }
+        // Pick one of 4 hurdle styles based on level progression and current river theme.
         val style = HurdleStyle.entries[((level - 1) / 3).coerceIn(0, HurdleStyle.entries.size - 1)]
         val sidePadding = 80f
         val leftCenterRange = (sidePadding + gap * 0.5f)..(vw * 0.42f)
         val rightCenterRange = (vw * 0.58f)..(vw - sidePadding - gap * 0.5f)
-        val gapCenter = if (nextGapOnLeft) {
-            lerp(leftCenterRange.start, leftCenterRange.endInclusive, Random.nextFloat())
-        } else {
-            lerp(rightCenterRange.start, rightCenterRange.endInclusive, Random.nextFloat())
+        val gapCenter = when (pattern) {
+            ObstaclePattern.LEFT -> lerp(leftCenterRange.start, leftCenterRange.endInclusive, Random.nextFloat())
+            ObstaclePattern.RIGHT -> lerp(rightCenterRange.start, rightCenterRange.endInclusive, Random.nextFloat())
+            ObstaclePattern.CENTER -> vw * 0.5f
+            ObstaclePattern.DOUBLE -> vw * 0.5f
+            ObstaclePattern.SWAY -> vw * 0.5f
+            ObstaclePattern.CROSS -> vw * 0.5f
         }
         nextGapOnLeft = !nextGapOnLeft
-        val gapLeft = gapCenter - gap * 0.5f; val gapRight = gapCenter + gap * 0.5f
-        if (count >= 1 && gapLeft > GameConstants.OBSTACLE_MIN_WIDTH * 0.6f) spawnObstacleInRange(0f, gapLeft, level, style, rowToken)
-        if (count >= 2 && (vw - gapRight) > GameConstants.OBSTACLE_MIN_WIDTH * 0.6f) spawnObstacleInRange(gapRight, vw, level, style, rowToken)
+        when (pattern) {
+            ObstaclePattern.LEFT -> spawnObstacleInRange(0f, gapCenter - gap * 0.5f, level, style, rowToken, difficultyPreset, pattern, 0)
+            ObstaclePattern.RIGHT -> spawnObstacleInRange(gapCenter + gap * 0.5f, vw, level, style, rowToken, difficultyPreset, pattern, 0)
+            ObstaclePattern.CENTER -> spawnObstacleInRange(vw * 0.5f - gap * 0.28f, vw * 0.5f + gap * 0.28f, level, style, rowToken, difficultyPreset, pattern, 0)
+            ObstaclePattern.DOUBLE -> {
+                spawnObstacleInRange(0f, vw * 0.5f - gap * 0.5f, level, style, rowToken, difficultyPreset, pattern, 0)
+                spawnObstacleInRange(vw * 0.5f + gap * 0.5f, vw, level, style, rowToken, difficultyPreset, pattern, 1)
+            }
+            ObstaclePattern.SWAY -> spawnObstacleInRange(vw * 0.5f - gap * 0.32f, vw * 0.5f + gap * 0.32f, level, style, rowToken, difficultyPreset, pattern, Random.nextInt(0, 2))
+            ObstaclePattern.CROSS -> {
+                spawnObstacleInRange(0f, vw * 0.45f, level, style, rowToken, difficultyPreset, pattern, 0)
+                spawnObstacleInRange(vw * 0.55f, vw, level, style, rowToken, difficultyPreset, pattern, 1)
+            }
+        }
     }
 
-    private fun spawnObstacleInRange(minX: Float, maxX: Float, level: Int, style: HurdleStyle, rowToken: Int) {
+    private fun spawnObstacleInRange(minX: Float, maxX: Float, level: Int, style: HurdleStyle, rowToken: Int, difficultyPreset: DifficultyPreset, pattern: ObstaclePattern, variant: Int) {
         val kind = if (Random.nextFloat() < GameConstants.ROCK_SPAWN_CHANCE) ObstacleKind.ROCK else ObstacleKind.LOG
+        val difficultySpeedFactor = when (difficultyPreset) {
+            DifficultyPreset.EASY -> 0.9f
+            DifficultyPreset.NORMAL -> 1f
+            DifficultyPreset.HARD -> 1.12f
+            DifficultyPreset.EXTREME -> 1.24f
+        }
         val (w, h) = if (kind == ObstacleKind.LOG)
             lerp(GameConstants.OBSTACLE_MIN_WIDTH, GameConstants.OBSTACLE_MAX_WIDTH, Random.nextFloat()) to GameConstants.OBSTACLE_HEIGHT.coerceAtMost(80f)
         else lerp(GameConstants.ROCK_MIN_WIDTH, GameConstants.ROCK_MAX_WIDTH, Random.nextFloat()) to GameConstants.ROCK_HEIGHT
         val cw = min(w, maxX - minX)
         val x = lerp(minX + cw * 0.5f, maxX - cw * 0.5f, Random.nextFloat())
         val baseSpeed = lerp(GameConstants.OBSTACLE_MIN_SPEED, GameConstants.OBSTACLE_MAX_SPEED, Random.nextFloat())
-        val speed = min(GameConstants.SPEED_CAP, baseSpeed + (level - 1) * GameConstants.LEVEL_SPEED_BONUS + if (kind == ObstacleKind.ROCK) GameConstants.ROCK_SPEED_BONUS else 0f)
-        val entity = if (obstaclePool.isEmpty()) ObstacleEntity(nextObstacleId++, x, -h, cw, h, speed, kind, style, rowToken)
-        else obstaclePool.removeFirst().apply { id = nextObstacleId++; this.x = x; y = -h; width = cw; height = h; this.speed = speed; this.kind = kind; this.style = style; this.rowToken = rowToken; counted = false; warningHighlight = 0f; warningTriggered = false }
+        val speed = min(GameConstants.SPEED_CAP, (baseSpeed + (level - 1) * GameConstants.LEVEL_SPEED_BONUS + if (kind == ObstacleKind.ROCK) GameConstants.ROCK_SPEED_BONUS else 0f) * difficultySpeedFactor)
+        val driftPhase = Random.nextFloat() * PI.toFloat() * 2f
+        val entity = if (obstaclePool.isEmpty()) ObstacleEntity(nextObstacleId++, x, -h, cw, h, speed, kind, style, rowToken, pattern, variant, driftPhase, 0f)
+        else obstaclePool.removeFirst().apply {
+            id = nextObstacleId++
+            this.x = x
+            y = -h
+            width = cw
+            height = h
+            this.speed = speed
+            this.kind = kind
+            this.style = style
+            this.rowToken = rowToken
+            this.pattern = pattern
+            this.variant = variant
+            this.driftPhase = driftPhase
+            this.entryAge = 0f
+            counted = false
+            warningHighlight = 0f
+            warningTriggered = false
+        }
         activeObstacles.add(entity)
     }
 
@@ -760,6 +967,7 @@ class GameViewModel @Inject constructor(
         val iter = activeBoosts.iterator()
         while (iter.hasNext()) {
             val b = iter.next()
+            b.age += dt
             b.y += b.speed * dt
             if (magnetPull) { val dx = leafRect.centerX() - b.x; val dy = leafRect.centerY() - b.y; val dist = kotlin.math.sqrt(dx * dx + dy * dy); if (dist < GameConstants.MAGNET_PULL_RADIUS) { b.x += dx / dist * 200f * dt; b.y += dy / dist * 200f * dt } }
             if (!collected && circleIntersectsRect(b.x, b.y, b.radius, leafRect)) { collected = true; b.collected = true; audioEngine.playCollect() }
@@ -771,9 +979,15 @@ class GameViewModel @Inject constructor(
     private fun spawnBoost() {
         val r = GameConstants.BOOST_RADIUS
         val x = lerp(r, GameConstants.VIRTUAL_WIDTH - r, Random.nextFloat())
-        val e = if (boostPool.isEmpty()) BoostEntity(nextBoostId++, x, -r, r, GameConstants.BOOST_DRIFT_SPEED)
-        else boostPool.removeFirst().apply { id = nextBoostId++; this.x = x; y = -r; radius = r; speed = GameConstants.BOOST_DRIFT_SPEED; collected = false }
+        val kind = BoostKind.entries[randomBoostKindIndex()]
+        val e = if (boostPool.isEmpty()) BoostEntity(nextBoostId++, x, -r, r, GameConstants.BOOST_DRIFT_SPEED, kind)
+        else boostPool.removeFirst().apply { id = nextBoostId++; this.x = x; y = -r; radius = r; speed = GameConstants.BOOST_DRIFT_SPEED; this.kind = kind; collected = false; age = 0f }
         activeBoosts.add(e)
+    }
+
+    private fun randomBoostKindIndex(): Int = when {
+        activePowerUpTimers.containsKey(PowerUpType.SHIELD) -> Random.nextInt(0, BoostKind.entries.size)
+        else -> Random.nextInt(0, BoostKind.entries.size)
     }
 
     // ── Power-up logic ───────────────────────────────────────────────────────

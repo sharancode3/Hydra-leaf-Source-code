@@ -1,6 +1,6 @@
-# Hydra Leaf Prototype
+# Hydra Leaf v1.2.0
 
-A lightweight Jetpack Compose Android game prototype where a single leaf glides across a watercolor river and the player steers only by tilting the device. The entire scene is rendered on a logical 1080x1920 viewport that scales to any phone size, aspect ratio, or pixel density.
+A lightweight Jetpack Compose Android game where a single leaf glides across a watercolor river and the player steers by tilt, tap, or touch. The entire scene is rendered on a logical 1080x1920 viewport that scales to any phone size, aspect ratio, or pixel density.
 
 ## Project layout
 

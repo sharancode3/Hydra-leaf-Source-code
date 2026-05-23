@@ -5,6 +5,8 @@ enum class ControlMode { GYROSCOPE, TOUCH, TAP }
 enum class SensitivityCurve { LINEAR, EXPONENTIAL }
 enum class SensitivityPreset { GENTLE, BALANCED, RESPONSIVE }
 enum class AccessibilityMode { STANDARD, TAP_BASED }
+enum class DifficultyPreset(val displayName: String) { EASY("Easy"), NORMAL("Normal"), HARD("Hard"), EXTREME("Extreme") }
+enum class ParticleDensity(val displayName: String) { LOW("Low"), MEDIUM("Medium"), HIGH("High") }
 
 // ── Game State Machine ───────────────────────────────────────────────────────
 enum class GamePhase { IDLE, CALIBRATING, COUNTDOWN, PLAYING, DEAD, GAME_OVER }
@@ -45,6 +47,38 @@ enum class RiverTheme(val displayName: String, val cost: Int) {
     CRYSTAL("Crystal Cave", 500),
     MIDNIGHT("Midnight River", 750)
 }
+
+// ── Meta progression ───────────────────────────────────────────────────────
+enum class AchievementType(
+    val title: String,
+    val description: String,
+    val rewardDrops: Int,
+    val target: Int
+) {
+    FIRST_FLIGHT("First Flight", "Play your first run.", 25, 1),
+    SURVIVOR("Survivor", "Survive for 60 seconds.", 75, 60),
+    SPEED_DEMON("Speed Demon", "Score 500 in one run.", 120, 500),
+    DROP_COLLECTOR("Drop Collector", "Collect 1000 River Drops.", 150, 1000),
+    UNTOUCHABLE("Untouchable", "Use Ghost Leaf 10 times.", 100, 10)
+}
+
+data class RunRecord(
+    val score: Int,
+    val level: Int,
+    val drops: Int,
+    val durationSec: Float,
+    val dateEpochMillis: Long,
+    val skin: LeafSkin,
+    val theme: RiverTheme,
+    val difficulty: DifficultyPreset
+)
+
+data class AchievementProgress(
+    val type: AchievementType,
+    val unlocked: Boolean = false,
+    val claimed: Boolean = false,
+    val progress: Float = 0f
+)
 
 // ── Hurdle Style ─────────────────────────────────────────────────────────────
 enum class HurdleStyle { WOOD, STONE, ICE, LILY_PAD }
@@ -91,7 +125,16 @@ data class ControlSettings(
     val iconScale: Float = ControlDefaults.ICON_SCALE,
     val controlMode: ControlMode = ControlMode.GYROSCOPE,
     val preset: SensitivityPreset = SensitivityPreset.BALANCED,
-    val accessibilityMode: AccessibilityMode = AccessibilityMode.STANDARD
+    val accessibilityMode: AccessibilityMode = AccessibilityMode.STANDARD,
+    val difficultyPreset: DifficultyPreset = DifficultyPreset.NORMAL,
+    val musicVolume: Float = 0.8f,
+    val sfxVolume: Float = 0.9f,
+    val hapticsEnabled: Boolean = true,
+    val showSpeedIndicator: Boolean = true,
+    val showTrailEffect: Boolean = true,
+    val showNearMissFlash: Boolean = true,
+    val hudOpacity: Float = 0.9f,
+    val particleDensity: ParticleDensity = ParticleDensity.MEDIUM
 )
 
 // ── Active power-up state ────────────────────────────────────────────────────

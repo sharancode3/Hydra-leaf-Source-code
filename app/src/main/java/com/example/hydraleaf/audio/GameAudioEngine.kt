@@ -23,6 +23,8 @@ class GameAudioEngine {
     @Volatile var soundEnabled = true
     @Volatile var intensity = 0f        // 0..1 drives music layers
     @Volatile var speedFactor = 1f      // drives water-rush pitch
+    @Volatile var musicVolume = 0.8f
+    @Volatile var sfxVolume = 0.9f
 
     // Pre-generated clips
     private val dodgeClips: Array<ShortArray>
@@ -72,29 +74,29 @@ class GameAudioEngine {
                     val t = i.toFloat() / sr
                     var sample = 0.0
                     // Layer 1: bass drone (always)
-                    sample += sin(phase) * 0.12 * (0.3 + int * 0.7)
+                    sample += sin(phase) * 0.12 * (0.3 + int * 0.7) * musicVolume
                     // Layer 2: rhythm pulse (int > 0.2)
                     if (int > 0.2f) {
                         val rhythmAmp = ((int - 0.2f) / 0.8f).coerceIn(0.0f, 1.0f)
                         val rp = (rhythmPhase % (2 * PI)) / (2 * PI)
                         val pulse = if (rp < 0.1) 1.0 else 0.0
-                        sample += pulse * 0.08 * rhythmAmp
+                        sample += pulse * 0.08 * rhythmAmp * musicVolume
                     }
                     // Layer 3: melody (int > 0.4)
                     if (int > 0.4f) {
                         val melAmp = ((int - 0.4f) / 0.6f).coerceIn(0.0f, 1.0f)
                         val freq = GameConstants.PENTATONIC_FREQS[melodyIdx % 5].toDouble()
-                        sample += sin(2 * PI * freq * phase / (2 * PI * GameConstants.WATER_RUSH_BASE_FREQ.toDouble())) * 0.06 * melAmp
+                        sample += sin(2 * PI * freq * phase / (2 * PI * GameConstants.WATER_RUSH_BASE_FREQ.toDouble())) * 0.06 * melAmp * musicVolume
                     }
                     // Layer 4: harmony (int > 0.6)
                     if (int > 0.6f) {
                         val hAmp = ((int - 0.6f) / 0.4f).coerceIn(0.0f, 1.0f)
-                        sample += sin(phase * 1.5) * 0.04 * hAmp
+                        sample += sin(phase * 1.5) * 0.04 * hAmp * musicVolume
                     }
                     // Layer 5: accent (int > 0.8)
                     if (int > 0.8f) {
                         val aAmp = ((int - 0.8f) / 0.2f).coerceIn(0.0f, 1.0f)
-                        sample += sin(phase * 3.0) * 0.03 * aAmp
+                        sample += sin(phase * 3.0) * 0.03 * aAmp * musicVolume
                     }
                     // Water rush noise (filtered)
                     val noiseAmp = 0.04 * (0.3 + spd * 0.3)
@@ -112,7 +114,7 @@ class GameAudioEngine {
                 if (sfx != null) {
                     val mixLen = minOf(chunk.size, sfx.size)
                     for (i in 0 until mixLen) {
-                        val mixed = chunk[i].toInt() + sfx[i].toInt()
+                        val mixed = chunk[i].toInt() + (sfx[i].toInt() * sfxVolume).toInt()
                         chunk[i] = mixed.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
                     }
                 }
