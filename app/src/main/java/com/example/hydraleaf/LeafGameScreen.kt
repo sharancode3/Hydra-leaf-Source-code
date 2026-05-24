@@ -1,11 +1,13 @@
 ﻿package com.example.hydraleaf
 
+import android.graphics.BitmapFactory
 import android.graphics.PointF
 import android.os.Build
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.MotionEvent
+import androidx.compose.foundation.border
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -97,7 +99,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -105,10 +109,14 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.hydraleaf.ui.AppColors
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -154,6 +162,36 @@ private object ThemeColors {
     }
 }
 
+private data class ObstacleSprites(
+    val forestLog: ImageBitmap? = null,
+    val forestRock: ImageBitmap? = null,
+    val arcticIce: ImageBitmap? = null,
+    val lavaRock: ImageBitmap? = null,
+    val crystalCluster: ImageBitmap? = null,
+    val midnightVoidOrb: ImageBitmap? = null,
+    val midnightRuinPillar: ImageBitmap? = null,
+)
+
+private fun loadObstacleSprites(context: android.content.Context): ObstacleSprites = ObstacleSprites(
+    forestLog = loadFirstAssetBitmap(context, "images/obstacles/forest_log.png", "images/obstacles/kenney_log.png"),
+    forestRock = loadFirstAssetBitmap(context, "images/obstacles/forest_rock.png", "images/obstacles/kenney_rock.png"),
+    arcticIce = loadFirstAssetBitmap(context, "images/obstacles/arctic_ice.png", "images/obstacles/ice_formation.png"),
+    lavaRock = loadFirstAssetBitmap(context, "images/obstacles/lava_rock.png"),
+    crystalCluster = loadFirstAssetBitmap(context, "images/obstacles/crystal_cluster.png"),
+    midnightVoidOrb = loadFirstAssetBitmap(context, "images/obstacles/midnight_void_orb.png"),
+    midnightRuinPillar = loadFirstAssetBitmap(context, "images/obstacles/midnight_ruin_pillar.png"),
+)
+
+private fun loadFirstAssetBitmap(context: android.content.Context, vararg assetPaths: String): ImageBitmap? {
+    for (path in assetPaths) {
+        val bmp = runCatching {
+            context.assets.open(path).use { stream -> BitmapFactory.decodeStream(stream)?.asImageBitmap() }
+        }.getOrNull()
+        if (bmp != null) return bmp
+    }
+    return null
+}
+
 // ── Main composable ──────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -172,6 +210,7 @@ fun LeafGameScreen(
     var maxPointersInGesture by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val reusableLeafPath = remember { Path() }
+    val obstacleSprites = remember { loadObstacleSprites(context) }
     val latestTilt by rememberUpdatedState(uiState.lastTiltSample)
 
     // Haptic on collision
@@ -266,7 +305,7 @@ fun LeafGameScreen(
             drawTrailParticles(uiState.trailParticles, uiState.leafSkin, vp)
 
             // Obstacles with procedural textures
-            drawObstacles(uiState, vp)
+            drawObstacles(uiState, vp, obstacleSprites)
 
             // Power-up collectibles
             drawPowerUpCollectibles(uiState.powerUpCollectibles, vp)
@@ -491,7 +530,9 @@ private fun DrawScope.drawLeaf(ui: GameUiState, vp: ViewportMapping, reusablePat
         reusablePath.quadraticBezierTo(tl.x + wPx * 0.98f, tl.y + hPx * 0.35f, tl.x + wPx * 0.5f, tl.y + hPx)
         reusablePath.quadraticBezierTo(tl.x + wPx * 0.02f, tl.y + hPx * 0.35f, tl.x + wPx * 0.5f, tl.y)
         // Boost glow
-        if (ui.boostActive) drawCircle(Color(0x448CFFF1), wPx, center)
+        if (ui.boostActive) {
+            drawPath(reusablePath, Color(0x55FFD166))
+        }
         drawPath(reusablePath, fillColor)
         drawPath(reusablePath, strokeColor.copy(alpha = 0.4f), style = Stroke(2f * vp.scale))
         // Vein
@@ -507,7 +548,7 @@ private fun DrawScope.drawLeaf(ui: GameUiState, vp: ViewportMapping, reusablePat
 
 // ── Draw: obstacles with procedural textures ─────────────────────────────────
 
-private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping) {
+private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping, sprites: ObstacleSprites) {
     ui.obstacles.forEach { o ->
         val entryScale = 0.72f + o.entryProgress * 0.28f
         val drift = if (o.pattern == ObstaclePattern.SWAY || o.pattern == ObstaclePattern.CROSS) sin((ui.runTime * 2.6f + o.driftPhase).toDouble()).toFloat() * o.width * 0.08f else 0f
@@ -525,16 +566,33 @@ private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping) {
         }
 
         when (ui.riverTheme) {
-            RiverTheme.FOREST -> drawForestObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
-            RiverTheme.ARCTIC -> drawArcticObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
-            RiverTheme.VOLCANIC -> drawVolcanicObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
-            RiverTheme.CRYSTAL -> drawCrystalObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
-            RiverTheme.MIDNIGHT -> drawMidnightObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp)
+            RiverTheme.FOREST -> drawForestObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
+            RiverTheme.ARCTIC -> drawArcticObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
+            RiverTheme.VOLCANIC -> drawVolcanicObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
+            RiverTheme.CRYSTAL -> drawCrystalObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
+            RiverTheme.MIDNIGHT -> drawMidnightObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
         }
     }
 }
 
-private fun DrawScope.drawForestObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+private fun DrawScope.drawObstacleSprite(sprite: ImageBitmap?, topLeft: Offset, size: Size, alpha: Float = 1f): Boolean {
+    if (sprite == null || size.width <= 1f || size.height <= 1f) return false
+    drawImage(
+        image = sprite,
+        dstOffset = IntOffset(topLeft.x.toInt(), topLeft.y.toInt()),
+        dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
+        alpha = alpha
+    )
+    return true
+}
+
+private fun DrawScope.drawForestObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping, sprites: ObstacleSprites) {
+    val sprite = if (o.kind == ObstacleKind.LOG) sprites.forestLog else sprites.forestRock
+    if (drawObstacleSprite(sprite, tl, sz, alpha = 0.95f)) {
+        drawRoundRect(accent.copy(alpha = 0.14f), tl, sz, CornerRadius(14f * vp.scale), style = Stroke(1.4f * vp.scale))
+        if (warning > 0f) drawCircle(Color(0xFF9FEFC7).copy(alpha = warning * 0.28f), max(sz.width, sz.height) * 0.7f, center)
+        return
+    }
     when (o.pattern) {
         ObstaclePattern.CENTER, ObstaclePattern.LEFT, ObstaclePattern.RIGHT -> {
             if (o.variant % 2 == 0) {
@@ -558,7 +616,12 @@ private fun DrawScope.drawForestObstacle(o: ObstacleState, tl: Offset, sz: Size,
     if (warning > 0f) drawCircle(Color(0xFF9FEFC7).copy(alpha = warning * 0.28f), max(sz.width, sz.height) * 0.7f, center)
 }
 
-private fun DrawScope.drawArcticObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+private fun DrawScope.drawArcticObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping, sprites: ObstacleSprites) {
+    if (drawObstacleSprite(sprites.arcticIce, tl, sz, alpha = 0.95f)) {
+        drawRoundRect(Color.White.copy(alpha = 0.3f), tl, sz, CornerRadius(12f * vp.scale), style = Stroke(1.5f * vp.scale))
+        if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.22f), max(sz.width, sz.height) * 0.75f, center)
+        return
+    }
     val hex = Path().apply {
         val w = sz.width; val h = sz.height
         moveTo(tl.x + w * 0.15f, tl.y)
@@ -576,7 +639,12 @@ private fun DrawScope.drawArcticObstacle(o: ObstacleState, tl: Offset, sz: Size,
     if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.22f), max(sz.width, sz.height) * 0.75f, center)
 }
 
-private fun DrawScope.drawVolcanicObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+private fun DrawScope.drawVolcanicObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping, sprites: ObstacleSprites) {
+    if (drawObstacleSprite(sprites.lavaRock, tl, sz, alpha = 0.95f)) {
+        drawRoundRect(Color(0xFFFF7A3D).copy(alpha = 0.45f + warning * 0.35f), Offset(tl.x - 4f, tl.y - 4f), Size(sz.width + 8f, sz.height + 8f), CornerRadius(20f * vp.scale), style = Stroke(2.4f * vp.scale))
+        drawCircle(Color(0xFFFF8B4A).copy(alpha = 0.15f + warning * 0.15f), max(sz.width, sz.height) * 0.72f, center)
+        return
+    }
     drawRoundRect(Color(0xFF2A1711), tl, sz, CornerRadius(20f * vp.scale))
     drawRoundRect(Color(0xFFFF7A3D).copy(alpha = 0.45f + warning * 0.35f), Offset(tl.x - 4f, tl.y - 4f), Size(sz.width + 8f, sz.height + 8f), CornerRadius(20f * vp.scale), style = Stroke(3f * vp.scale))
     repeat(4) { i ->
@@ -586,7 +654,12 @@ private fun DrawScope.drawVolcanicObstacle(o: ObstacleState, tl: Offset, sz: Siz
     drawCircle(Color(0xFFFF8B4A).copy(alpha = 0.15f + warning * 0.15f), max(sz.width, sz.height) * 0.72f, center)
 }
 
-private fun DrawScope.drawCrystalObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+private fun DrawScope.drawCrystalObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping, sprites: ObstacleSprites) {
+    if (drawObstacleSprite(sprites.crystalCluster, tl, sz, alpha = 0.95f)) {
+        drawRoundRect(Color.White.copy(alpha = 0.36f), tl, sz, CornerRadius(12f * vp.scale), style = Stroke(1.6f * vp.scale))
+        if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.28f), max(sz.width, sz.height) * 0.75f, center)
+        return
+    }
     val prism = Path().apply {
         moveTo(tl.x + sz.width * 0.5f, tl.y)
         lineTo(tl.x + sz.width, tl.y + sz.height * 0.35f)
@@ -601,7 +674,13 @@ private fun DrawScope.drawCrystalObstacle(o: ObstacleState, tl: Offset, sz: Size
     if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.28f), max(sz.width, sz.height) * 0.75f, center)
 }
 
-private fun DrawScope.drawMidnightObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping) {
+private fun DrawScope.drawMidnightObstacle(o: ObstacleState, tl: Offset, sz: Size, center: Offset, accent: Color, warning: Float, vp: ViewportMapping, sprites: ObstacleSprites) {
+    val sprite = if (o.variant % 2 == 0) sprites.midnightVoidOrb else sprites.midnightRuinPillar
+    if (drawObstacleSprite(sprite, tl, sz, alpha = 0.95f)) {
+        drawRoundRect(accent.copy(alpha = 0.2f), tl, sz, CornerRadius(10f * vp.scale), style = Stroke(1.5f * vp.scale))
+        if (warning > 0f) drawCircle(accent.copy(alpha = warning * 0.25f), max(sz.width, sz.height) * 0.8f, center)
+        return
+    }
     drawCircle(Color(0xFF162031), min(sz.width, sz.height) * 0.46f, center)
     drawCircle(Color(0x552A58FF), min(sz.width, sz.height) * (0.5f + warning * 0.08f), center, style = Stroke(3f * vp.scale))
     drawCircle(Color(0x2238D7FF), min(sz.width, sz.height) * 0.70f, center, style = Stroke(1.2f * vp.scale))
@@ -874,7 +953,7 @@ private fun BoxScope.IconHud(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Filled.Leaderboard, contentDescription = "Score", tint = Color(0xFF8FF5C8), modifier = Modifier.size(16.dp))
+                        Icon(painter = painterResource(R.drawable.ic_hud_score), contentDescription = "Score", tint = Color(0xFF8FF5C8), modifier = Modifier.size(16.dp))
                         Text("$animatedScore", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = Color.White)
                     }
                     Text("Best: $bestScore", style = MaterialTheme.typography.labelSmall, color = Color(0xCCFFFFFF))
@@ -954,20 +1033,23 @@ private fun SettingsPanel(
     onDifficultyChanged: (DifficultyPreset) -> Unit, onShowSpeedIndicatorChanged: (Boolean) -> Unit, onShowTrailEffectChanged: (Boolean) -> Unit
 ) {
     var confirmReset by rememberSaveable { mutableStateOf(false) }
-    Surface(Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(28.dp), tonalElevation = 8.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+    Surface(Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(28.dp), tonalElevation = 8.dp, color = AppColors.backgroundDark) {
         Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClose, Modifier.size(48.dp)) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back") }
-                Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                IconButton(onClose, Modifier.size(48.dp)) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = AppColors.textPrimary) }
+                Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
             }
             // Control mode
             SettingsSection("Control Mode", "Choose touch drag, tap-steer, or gyroscope.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (mode in ControlMode.entries) {
-                        AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onControlModeChanged(mode) },
+                        AssistChip(
+                            modifier = Modifier.heightIn(min = 48.dp).border(1.dp, if (settings.controlMode == mode) AppColors.primaryGreen else AppColors.backgroundCard, RoundedCornerShape(999.dp)),
+                            onClick = { onControlModeChanged(mode) },
                             label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
                             leadingIcon = if (settings.controlMode == mode) { { Icon(if (mode == ControlMode.TOUCH) Icons.Filled.TouchApp else Icons.Filled.Tune, contentDescription = "Mode ${mode.name}", Modifier.size(16.dp)) } } else null,
-                            colors = AssistChipDefaults.assistChipColors(containerColor = if (settings.controlMode == mode) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
+                            colors = AssistChipDefaults.assistChipColors()
+                        )
                     }
                 }
             }
@@ -975,14 +1057,17 @@ private fun SettingsPanel(
             SettingsSection("Sensitivity Presets") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (p in SensitivityPreset.entries) {
-                        AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onPresetSelected(p) },
+                        AssistChip(
+                            modifier = Modifier.heightIn(min = 48.dp).border(1.dp, if (settings.preset == p) AppColors.primaryGreen else AppColors.backgroundCard, RoundedCornerShape(999.dp)),
+                            onClick = { onPresetSelected(p) },
                             label = { Text(p.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                            colors = AssistChipDefaults.assistChipColors(containerColor = if (settings.preset == p) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
+                            colors = AssistChipDefaults.assistChipColors()
+                        )
                     }
                 }
             }
             SettingsSection("Motion Feel", "Dial in how reactive steering feels.") {
-                SettingsSlider("Sensitivity ${settings.sensitivityMultiplier.fmt(1)}", settings.sensitivityMultiplier, 0.2f..6f, onSensitivityChanged)
+                SettingsSlider("Sensitivity ${settings.sensitivityMultiplier.fmt(1)}x", settings.sensitivityMultiplier, 0.2f..6f, onSensitivityChanged)
                 SettingsSlider("Tilt Response ${settings.stiffness.fmt(0)}", settings.stiffness, 4f..32f, onStiffnessChanged)
                 SettingsSlider("Leaf Momentum ${settings.damping.fmt(2)}", settings.damping, 0.7f..0.98f, onDampingChanged)
             }
@@ -996,14 +1081,19 @@ private fun SettingsPanel(
                 LabeledSwitch("Instant snap", settings.instantSnap, onInstantSnapChanged)
             }
             SettingsSection("Audio") {
-                SettingsSlider("Music ${settings.musicVolume.fmt(2)}", settings.musicVolume, 0f..1f, onMusicVolumeChanged)
-                SettingsSlider("SFX ${settings.sfxVolume.fmt(2)}", settings.sfxVolume, 0f..1f, onSfxVolumeChanged)
+                SettingsSlider("Music ${(settings.musicVolume * 100f).toInt()}%", settings.musicVolume, 0f..1f, onMusicVolumeChanged)
+                SettingsSlider("SFX ${(settings.sfxVolume * 100f).toInt()}%", settings.sfxVolume, 0f..1f, onSfxVolumeChanged)
                 LabeledSwitch("Haptic feedback", settings.hapticsEnabled, onHapticsChanged)
             }
             SettingsSection("Gameplay") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DifficultyPreset.entries.forEach { preset ->
-                        AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onDifficultyChanged(preset) }, label = { Text(preset.displayName) }, colors = AssistChipDefaults.assistChipColors(containerColor = if (settings.difficultyPreset == preset) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
+                        AssistChip(
+                            modifier = Modifier.heightIn(min = 48.dp).border(1.dp, if (settings.difficultyPreset == preset) AppColors.primaryGreen else AppColors.backgroundCard, RoundedCornerShape(999.dp)),
+                            onClick = { onDifficultyChanged(preset) },
+                            label = { Text(preset.displayName, maxLines = 1) },
+                            colors = AssistChipDefaults.assistChipColors()
+                        )
                     }
                 }
                 LabeledSwitch("Show speed indicator", settings.showSpeedIndicator, onShowSpeedIndicatorChanged)
@@ -1079,47 +1169,66 @@ private fun BoostMeter(modifier: Modifier, boostActive: Boolean, remaining: Floa
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun SettingsSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    val splitIndex = label.lastIndexOf(' ')
+    val labelText = if (splitIndex > 0) label.substring(0, splitIndex) else label
+    val valueText = if (splitIndex > 0) label.substring(splitIndex + 1) else ""
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(labelText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = AppColors.textPrimary)
+            Text(valueText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppColors.primaryGreen)
+        }
         Slider(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
             interactionSource = interactionSource,
+            colors = SliderDefaults.colors(
+                thumbColor = AppColors.primaryGreen,
+                inactiveTrackColor = AppColors.textMuted.copy(alpha = 0.24f)
+            ),
             thumb = {
                 SliderDefaults.Thumb(
                     interactionSource = interactionSource,
-                    colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary),
+                    colors = SliderDefaults.colors(thumbColor = AppColors.primaryGreen),
                     thumbSize = androidx.compose.ui.unit.DpSize(28.dp, 28.dp)
                 )
-            },
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f)
-            )
+            }
         )
     }
 }
 @Composable private fun CurveSelector(current: SensitivityCurve, onCurveChange: (SensitivityCurve) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         for (c in SensitivityCurve.entries) {
-            AssistChip(modifier = Modifier.heightIn(min = 48.dp), onClick = { onCurveChange(c) }, label = { Text(c.name.lowercase().replaceFirstChar { it.uppercase() }) },
+            AssistChip(
+                modifier = Modifier.heightIn(min = 48.dp).border(1.dp, if (current == c) AppColors.primaryGreen else AppColors.backgroundCard, RoundedCornerShape(999.dp)),
+                onClick = { onCurveChange(c) },
+                label = { Text(c.name.lowercase().replaceFirstChar { it.uppercase() }) },
                 leadingIcon = if (current == c) { { Icon(Icons.Filled.Tune, contentDescription = "Active $c", Modifier.size(16.dp)) } } else null,
-                colors = AssistChipDefaults.assistChipColors(containerColor = if (current == c) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant))
+                colors = AssistChipDefaults.assistChipColors()
+            )
         }
     }
 }
 @Composable private fun SettingsSection(title: String, description: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(title, style = MaterialTheme.typography.titleMedium); description?.let { Text(it, style = MaterialTheme.typography.bodySmall) } }
-        content()
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard.copy(alpha = 0.96f)),
+        modifier = Modifier.border(1.dp, AppColors.primaryGreen.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+                Box(Modifier.width(3.dp).height(14.dp).background(AppColors.primaryGreen, RoundedCornerShape(99.dp)))
+                Text(title.uppercase(), style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp, lineHeight = 16.sp), fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp, color = AppColors.primaryGreen)
+            }
+            description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AppColors.textMuted) }
+            content()
+        }
     }
 }
 @Composable fun LabeledSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Switch(checked, onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary, checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)))
+    Row(modifier = Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = AppColors.textPrimary, modifier = Modifier.weight(1f))
+        Switch(checked, onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = AppColors.primaryGreen, checkedTrackColor = AppColors.primaryGreen.copy(alpha = 0.3f), uncheckedThumbColor = AppColors.textMuted, uncheckedTrackColor = AppColors.backgroundDark.copy(alpha = 0.8f)))
     }
 }
 

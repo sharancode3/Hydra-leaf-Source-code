@@ -43,6 +43,9 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
     val highScoreFlow: Flow<Int>     = dataStore.data.map { it[HIGH_SCORE_KEY] ?: 0 }
     val lastScoreFlow: Flow<Int>     = dataStore.data.map { it[LAST_SCORE_KEY] ?: 0 }
     val levelReachedFlow: Flow<Int>  = dataStore.data.map { it[LEVEL_REACHED_KEY] ?: 1 }
+    val defaultDifficultyFlow: Flow<DifficultyPreset> = dataStore.data.map {
+        it[DEFAULT_DIFFICULTY_KEY]?.let { value -> runCatching { DifficultyPreset.valueOf(value) }.getOrNull() } ?: DifficultyPreset.NORMAL
+    }
     val tutorialSeenFlow: Flow<Boolean> = dataStore.data.map { it[TUTORIAL_SEEN_KEY] ?: false }
     val soundEnabledFlow: Flow<Boolean> = dataStore.data.map { it[SOUND_KEY] ?: true }
 
@@ -110,6 +113,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
     suspend fun setPreset(v: SensitivityPreset)     { dataStore.edit { it[PRESET_KEY] = v.name } }
     suspend fun setAccessibilityMode(v: AccessibilityMode) { dataStore.edit { it[ACCESSIBILITY_KEY] = v.name } }
     suspend fun setDifficultyPreset(v: DifficultyPreset) { dataStore.edit { it[DIFFICULTY_KEY] = v.name } }
+    suspend fun setDefaultDifficulty(v: DifficultyPreset) { dataStore.edit { it[DEFAULT_DIFFICULTY_KEY] = v.name } }
     suspend fun setMusicVolume(v: Float)            { dataStore.edit { it[MUSIC_VOLUME_KEY] = v.coerceIn(0f, 1f) } }
     suspend fun setSfxVolume(v: Float)              { dataStore.edit { it[SFX_VOLUME_KEY] = v.coerceIn(0f, 1f) } }
     suspend fun setHapticsEnabled(v: Boolean)       { dataStore.edit { it[HAPTICS_KEY] = v } }
@@ -208,6 +212,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
             prefs[PRESET_KEY]        = SensitivityPreset.BALANCED.name
             prefs[ACCESSIBILITY_KEY] = AccessibilityMode.STANDARD.name
             prefs[DIFFICULTY_KEY]    = DifficultyPreset.NORMAL.name
+            prefs[DEFAULT_DIFFICULTY_KEY] = DifficultyPreset.NORMAL.name
             prefs[MUSIC_VOLUME_KEY]  = 0.8f
             prefs[SFX_VOLUME_KEY]    = 0.9f
             prefs[HAPTICS_KEY]       = true
@@ -292,6 +297,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
         val PRESET_KEY        = stringPreferencesKey("sensitivity_preset")
         val ACCESSIBILITY_KEY = stringPreferencesKey("accessibility_mode")
         val DIFFICULTY_KEY    = stringPreferencesKey("difficulty_preset")
+        val DEFAULT_DIFFICULTY_KEY = stringPreferencesKey("default_difficulty")
         val MUSIC_VOLUME_KEY  = floatPreferencesKey("music_volume")
         val SFX_VOLUME_KEY    = floatPreferencesKey("sfx_volume")
         val HAPTICS_KEY       = booleanPreferencesKey("haptics_enabled")

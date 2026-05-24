@@ -26,5 +26,5 @@ object AppModule {
         PlayerSettingsStore(dataStore)
 
     @Provides @Singleton
-    fun provideGameAudioEngine(): GameAudioEngine = GameAudioEngine()
+    fun provideGameAudioEngine(@ApplicationContext context: Context): GameAudioEngine = GameAudioEngine(context)
 }

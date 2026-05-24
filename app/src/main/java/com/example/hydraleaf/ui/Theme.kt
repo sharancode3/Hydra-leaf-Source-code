@@ -20,27 +20,22 @@ import androidx.core.view.WindowCompat
 val Teal50  = Color(0xFFE0F7F1)
 val Teal100 = Color(0xFFB2EBD6)
 val Teal200 = Color(0xFF80DFBB)
-val Teal400 = Color(0xFF26C596)
+val Teal400 = AppColors.primaryGreen
 val Teal600 = Color(0xFF00A87B)
 val Teal700 = Color(0xFF009A6E)
 val Teal900 = Color(0xFF00634A)
 
-val NightSurface   = Color(0xFF0A1E1A)
-val NightOnSurface = Color(0xFFE0E0E0)
-val NightCard      = Color(0xFF12302A)
-val NightVariant   = Color(0xFF1C4038)
-
 private val DarkColorScheme = darkColorScheme(
-    primary         = Teal400,
+    primary         = AppColors.primaryGreen,
     onPrimary       = Color.Black,
     primaryContainer = Teal900,
     secondary       = Teal200,
-    background      = NightSurface,
-    surface         = NightCard,
-    surfaceVariant  = NightVariant,
-    onBackground    = NightOnSurface,
-    onSurface       = NightOnSurface,
-    onSurfaceVariant = Color(0xFFB0CFC7)
+    background      = AppColors.backgroundDark,
+    surface         = AppColors.backgroundCard,
+    surfaceVariant  = Color(0xFF1B3A33),
+    onBackground    = AppColors.textPrimary,
+    onSurface       = AppColors.textPrimary,
+    onSurfaceVariant = AppColors.textMuted
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -81,7 +76,7 @@ fun HydraLeafTheme(
             val window = (view.context as? Activity)?.window ?: return@SideEffect
             window.statusBarColor = Color.Transparent.toArgb()
             window.navigationBarColor = Color.Black.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
 

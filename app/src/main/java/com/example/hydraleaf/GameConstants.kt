@@ -34,6 +34,10 @@ object GameConstants {
 
     // ── Warning indicator ───────────────────────────────────────────────────
     const val WARNING_ZONE_RATIO = 0.18f
+    const val NEAR_MISS_MIN_CLEARANCE = 2f
+    const val NEAR_MISS_MAX_CLEARANCE = 22f
+    const val NEAR_MISS_MIN_VERTICAL_OVERLAP = 36f
+    const val NEAR_MISS_SFX_COOLDOWN = 0.2f
 
     // ── Rock obstacles ──────────────────────────────────────────────────────
     const val ROCK_MIN_WIDTH  = LEAF_WIDTH * 1.5f

@@ -2,11 +2,13 @@ package com.example.hydraleaf
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -76,15 +79,20 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.hydraleaf.ui.AppColors
 
 enum class HydraLeafDestination { HOME, GAME, SHOP, CHALLENGES, LEADERBOARD, SETTINGS }
 
@@ -121,7 +129,6 @@ fun HydraLeafApp(viewModel: GameViewModel) {
                         onOpenChallenges = { destination = HydraLeafDestination.CHALLENGES },
                         onOpenLeaderboard = { destination = HydraLeafDestination.LEADERBOARD },
                         onDifficultySelected = { viewModel.setDifficultyPreset(it) },
-                        onResetProgress = { viewModel.startNewRun() }
                     )
 
                     HydraLeafDestination.GAME -> LeafGameScreen(
@@ -165,7 +172,6 @@ private fun HomeScreen(
     onOpenChallenges: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onDifficultySelected: (DifficultyPreset) -> Unit,
-    onResetProgress: () -> Unit
 ) {
     val safePadding = WindowInsets.safeDrawing.asPaddingValues()
     val showContinue = uiState.phase == GamePhase.PLAYING || uiState.phase == GamePhase.IDLE
@@ -183,104 +189,203 @@ private fun HomeScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF07130F), Color(0xFF102F26), Color(0xFF0C1719))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        AppColors.backgroundDark,
+                        Color(0xFF0A2620),
+                        Color(0xFF081612)
+                    )
+                )
+            )
             .padding(safePadding)
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val drift = size.height * shimmerOffset
-            repeat(6) { index ->
-                val x = size.width * (0.12f + index * 0.15f) + kotlin.math.sin(((shimmerOffset + index) * 3.2f).toDouble()).toFloat() * 18f
-                val y = (drift + index * 260f) % (size.height + 200f) - 100f
-                drawCircle(Color(0x22CFE9D6), 18f + index * 3f, Offset(x, y))
-                drawLine(Color(0x44A8E6C4), Offset(x, y), Offset(x + 14f, y - 28f), strokeWidth = 3f)
-            }
-            repeat(4) { index ->
-                val baseX = size.width * (0.18f + index * 0.22f)
-                val sway = kotlin.math.sin(((shimmerOffset * 2f) + index).toDouble()).toFloat() * 16f
-                drawLine(Color(0x557BA06D), Offset(baseX, size.height * 0.82f), Offset(baseX + sway, size.height * 0.66f), strokeWidth = 14f)
-                drawLine(Color(0x3398C58B), Offset(baseX, size.height * 0.83f), Offset(baseX + sway * 0.8f, size.height * 0.58f), strokeWidth = 5f)
-            }
-        }
-
+        HomeAtmosphereLayer(shimmerOffset)
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(18.dp)).background(Color(0x33D7F9C2)), contentAlignment = Alignment.Center) {
-                        Text("LF", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
-                    }
-                    Column {
-                        Text("Hydra Leaf", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("Glide the leaf, dodge the river hurdles.", style = MaterialTheme.typography.bodyMedium, color = Color(0xCCFFFFFF))
+                    AppLogoMark(shimmerOffset)
+                    Column(Modifier.weight(1f)) {
+                        Text("Hydra Leaf", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = AppColors.textPrimary)
+                        Text("Glide the leaf, dodge the river hurdles.", style = MaterialTheme.typography.bodyMedium, color = AppColors.textMuted)
                     }
                 }
 
                 Card(
-                    shape = RoundedCornerShape(30.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.12f)),
-                    modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(30.dp))
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard.copy(alpha = 0.82f)),
+                    modifier = Modifier.border(1.dp, AppColors.primaryGreen.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
                 ) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            GlassStat("High Score", uiState.highScore.toString(), Icons.Filled.EmojiEvents)
-                            GlassStat("Last", uiState.lastScore.toString(), Icons.Filled.Dashboard)
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            GlassStat("Level", uiState.level.toString(), Icons.Filled.Straighten)
-                            GlassStat("Drops", uiState.totalRiverDrops.toString(), Icons.Filled.WaterDrop)
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            GlassStat("Skin", uiState.leafSkin.displayName, Icons.Filled.Dashboard)
-                            GlassStat("Theme", uiState.riverTheme.displayName, Icons.Filled.Dashboard)
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            GlassStat("Difficulty", selectedDifficulty.displayName, Icons.Filled.Dashboard)
-                            GlassStat("Games", uiState.totalGamesPlayed.toString(), Icons.Filled.Leaderboard)
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 164.dp)
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(
+                            listOf(
+                                StatCell("HIGH SCORE", uiState.highScore.toString(), StatGlyph.HIGH_SCORE),
+                                StatCell("LAST", uiState.lastScore.toString(), StatGlyph.LAST),
+                                StatCell("GAMES", uiState.totalGamesPlayed.toString(), StatGlyph.GAMES),
+                                StatCell("LEVEL", uiState.level.toString(), StatGlyph.LEVEL),
+                                StatCell("DROPS", uiState.totalRiverDrops.toString(), StatGlyph.DROPS),
+                                StatCell("MODE", uiState.controlSettings.controlMode.name, StatGlyph.MODE),
+                                StatCell("SKIN", uiState.leafSkin.displayName, StatGlyph.SKIN),
+                                StatCell("THEME", uiState.riverTheme.displayName, StatGlyph.THEME),
+                                StatCell("DIFFICULTY", selectedDifficulty.displayName, StatGlyph.DIFFICULTY)
+                            )
+                        ) { cell ->
+                            CompactStatCell(cell)
                         }
                     }
                 }
 
-                Button(onStartGame, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF39D39B))) { Text(primaryLabel) }
-                OutlinedButton(onNewRun, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Text("New Run") }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onOpenChallenges, Modifier.weight(1f), shape = RoundedCornerShape(18.dp)) { Text("Daily Challenges") }
-                    OutlinedButton(onOpenLeaderboard, Modifier.weight(1f), shape = RoundedCornerShape(18.dp)) { Text("Leaderboard") }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onOpenShop, Modifier.weight(1f), shape = RoundedCornerShape(18.dp)) { Text("Cosmetic Shop") }
-                    OutlinedButton(onOpenSettings, Modifier.weight(1f), shape = RoundedCornerShape(18.dp)) { Text("Settings") }
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 DifficultySelector(selectedDifficulty) {
                     selectedDifficulty = it
                     onDifficultySelected(it)
                 }
-                TextButton(onResetProgress, Modifier.align(Alignment.CenterHorizontally)) { Text("Reset current run") }
+
+                Button(
+                    onStartGame,
+                    modifier = Modifier.fillMaxWidth().height(60.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.primaryGreen)
+                ) {
+                    Text(primaryLabel, color = Color.Black, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                }
+
+                OutlinedButton(
+                    onNewRun,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Brush.linearGradient(listOf(AppColors.accentTeal, AppColors.primaryGreen)))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Quick Play", color = AppColors.textPrimary, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text("Start fresh run with current settings", style = MaterialTheme.typography.bodySmall, color = AppColors.textMuted, textAlign = TextAlign.Center)
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun GlassStat(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
+private fun HomeActionTile(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.heightIn(min = 74.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard.copy(alpha = 0.82f)),
+        border = BorderStroke(1.dp, AppColors.primaryGreen.copy(alpha = 0.12f))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(18.dp))
-        }
-        Column {
-            Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = Color(0xAAFFFFFF))
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+            Box(
+                Modifier.size(38.dp).clip(RoundedCornerShape(14.dp)).background(AppColors.primaryGreen.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = AppColors.primaryGreen)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, color = AppColors.textPrimary, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                Text(subtitle, color = AppColors.textMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
         }
     }
+}
+
+@Composable
+private fun AppLogoMark(shimmerOffset: Float) {
+    Box(
+        Modifier
+            .size(60.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(Brush.linearGradient(listOf(Color(0xFF0D3D30), Color(0xFF146B58), Color(0xFF18B57F)))),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_leaf_logo),
+            contentDescription = null,
+            tint = Color.Unspecified,
+            modifier = Modifier.size(39.dp)
+        )
+        Canvas(Modifier.fillMaxSize().padding(8.dp)) {
+            val sweepLeft = size.width * (0.18f + shimmerOffset * 0.7f)
+            drawRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.28f), Color.Transparent),
+                    start = Offset(sweepLeft - 24f, 0f),
+                    end = Offset(sweepLeft + 26f, size.height)
+                ),
+                topLeft = Offset(sweepLeft - 18f, 0f),
+                size = androidx.compose.ui.geometry.Size(size.width * 0.24f, size.height),
+                alpha = 0.16f
+            )
+        }
+    }
+}
+
+private enum class StatGlyph { HIGH_SCORE, LAST, GAMES, LEVEL, DROPS, MODE, SKIN, THEME, DIFFICULTY }
+
+private data class StatCell(val label: String, val value: String, val glyph: StatGlyph)
+
+@Composable
+private fun CompactStatCell(cell: StatCell) {
+    Card(
+        modifier = Modifier.fillMaxSize(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.035f))
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(vertical = 7.dp, horizontal = 6.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            StatGlyphIcon(cell.glyph)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(cell.label, color = AppColors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                Text(cell.value, color = AppColors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatGlyphIcon(glyph: StatGlyph) {
+    val iconRes = when (glyph) {
+        StatGlyph.HIGH_SCORE -> R.drawable.ic_highscore
+        StatGlyph.LAST -> R.drawable.ic_lastscore
+        StatGlyph.GAMES -> R.drawable.ic_games
+        StatGlyph.LEVEL -> R.drawable.ic_level
+        StatGlyph.DROPS -> R.drawable.ic_drops
+        StatGlyph.MODE -> R.drawable.ic_mode
+        StatGlyph.SKIN -> R.drawable.ic_skin
+        StatGlyph.THEME -> R.drawable.ic_theme
+        StatGlyph.DIFFICULTY -> R.drawable.ic_difficulty
+    }
+    Icon(
+        painter = painterResource(iconRes),
+        contentDescription = null,
+        tint = AppColors.primaryGreen,
+        modifier = Modifier.size(22.dp)
+    )
 }
 
 @Composable
@@ -290,14 +395,17 @@ private fun DifficultySelector(current: DifficultyPreset, onSelected: (Difficult
             val selected = preset == current
             Card(
                 shape = RoundedCornerShape(999.dp),
-                colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFF39D39B) else Color.White.copy(alpha = 0.10f)),
-                modifier = Modifier.weight(1f).clickable { onSelected(preset) }
+                colors = CardDefaults.cardColors(containerColor = if (selected) AppColors.primaryGreen else Color.White.copy(alpha = 0.045f)),
+                modifier = Modifier.weight(1f).height(42.dp).clickable { onSelected(preset) }
             ) {
                 Text(
                     preset.displayName,
-                    modifier = Modifier.padding(vertical = 10.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(horizontal = 4.dp).fillMaxWidth().height(42.dp),
                     textAlign = TextAlign.Center,
-                    color = if (selected) Color.Black else Color.White
+                    color = if (selected) Color.Black else AppColors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold, lineHeight = 16.sp)
                 )
             }
         }
@@ -313,24 +421,24 @@ private fun PersistentBottomNav(
     onStats: () -> Unit,
     onSettings: () -> Unit
 ) {
-    NavigationBar(containerColor = Color(0xFF07120F).copy(alpha = 0.96f)) {
+    NavigationBar(containerColor = AppColors.backgroundDark.copy(alpha = 0.96f)) {
         val colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = Color(0xFF39D39B),
-            selectedTextColor = Color(0xFF39D39B),
-            unselectedIconColor = Color(0xCCFFFFFF),
-            unselectedTextColor = Color(0x99FFFFFF),
-            indicatorColor = Color(0x2239D39B)
+            selectedIconColor = AppColors.primaryGreen,
+            selectedTextColor = AppColors.primaryGreen,
+            unselectedIconColor = AppColors.textMuted,
+            unselectedTextColor = AppColors.textMuted,
+            indicatorColor = AppColors.primaryGreen.copy(alpha = 0.16f)
         )
         NavigationBarItem(
             selected = current == HydraLeafDestination.HOME,
             onClick = onHome,
             icon = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.Home, contentDescription = "Home")
+                    Icon(painter = painterResource(R.drawable.ic_nav_home), contentDescription = "Home")
                     Box(Modifier.size(5.dp).clip(RoundedCornerShape(99.dp)).background(if (current == HydraLeafDestination.HOME) Color(0xFF39D39B) else Color.Transparent))
                 }
             },
-            label = { Text("Home") },
+            label = { Text("Home", maxLines = 1, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)) },
             alwaysShowLabel = true,
             colors = colors
         )
@@ -339,11 +447,11 @@ private fun PersistentBottomNav(
             onClick = onShop,
             icon = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.Storefront, contentDescription = "Shop")
+                    Icon(painter = painterResource(R.drawable.ic_nav_shop), contentDescription = "Shop")
                     Box(Modifier.size(5.dp).clip(RoundedCornerShape(99.dp)).background(if (current == HydraLeafDestination.SHOP) Color(0xFF39D39B) else Color.Transparent))
                 }
             },
-            label = { Text("Shop") },
+            label = { Text("Shop", maxLines = 1, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)) },
             alwaysShowLabel = true,
             colors = colors
         )
@@ -352,11 +460,11 @@ private fun PersistentBottomNav(
             onClick = onChallenges,
             icon = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.EmojiEvents, contentDescription = "Challenges")
+                    Icon(painter = painterResource(R.drawable.ic_nav_challenges), contentDescription = "Challenges")
                     Box(Modifier.size(5.dp).clip(RoundedCornerShape(99.dp)).background(if (current == HydraLeafDestination.CHALLENGES) Color(0xFF39D39B) else Color.Transparent))
                 }
             },
-            label = { Text("Challenges") },
+            label = { Text("Daily", maxLines = 1, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)) },
             alwaysShowLabel = true,
             colors = colors
         )
@@ -365,11 +473,11 @@ private fun PersistentBottomNav(
             onClick = onStats,
             icon = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.BarChart, contentDescription = "Stats")
+                    Icon(painter = painterResource(R.drawable.ic_nav_stats), contentDescription = "Stats")
                     Box(Modifier.size(5.dp).clip(RoundedCornerShape(99.dp)).background(if (current == HydraLeafDestination.LEADERBOARD) Color(0xFF39D39B) else Color.Transparent))
                 }
             },
-            label = { Text("Stats") },
+            label = { Text("Stats", maxLines = 1, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)) },
             alwaysShowLabel = true,
             colors = colors
         )
@@ -378,11 +486,11 @@ private fun PersistentBottomNav(
             onClick = onSettings,
             icon = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    Icon(painter = painterResource(R.drawable.ic_nav_settings), contentDescription = "Settings")
                     Box(Modifier.size(5.dp).clip(RoundedCornerShape(99.dp)).background(if (current == HydraLeafDestination.SETTINGS) Color(0xFF39D39B) else Color.Transparent))
                 }
             },
-            label = { Text("Settings") },
+            label = { Text("Settings", maxLines = 1, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)) },
             alwaysShowLabel = true,
             colors = colors
         )
@@ -821,52 +929,61 @@ private fun SettingsScreen(
 ) {
     var selectedDifficulty by rememberSaveable(settings.difficultyPreset) { mutableStateOf(settings.difficultyPreset) }
     LaunchedEffect(settings.difficultyPreset) { selectedDifficulty = settings.difficultyPreset }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Surface(Modifier.fillMaxSize(), color = AppColors.backgroundDark) {
+        Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClose, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                IconButton(onClose, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AppColors.textPrimary) }
+                Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
             }
-            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("Gameplay", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                    Text("Default Difficulty", color = Color.White)
-                    DifficultySelector(selectedDifficulty) {
-                        selectedDifficulty = it
-                        onDifficultyChanged(it)
-                    }
+            SettingsSectionCard("Gameplay") {
+                Text("DEFAULT DIFFICULTY", color = AppColors.textMuted, style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp), fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(2.dp))
+                DifficultySelector(selectedDifficulty) {
+                    selectedDifficulty = it
+                    onDifficultyChanged(it)
+                }
+                SettingsRowCard {
                     LabeledSwitch("Show speed indicator", settings.showSpeedIndicator, onShowSpeedIndicatorChanged)
+                    SettingsDivider()
                     LabeledSwitch("Show trail effect", settings.showTrailEffect, onShowTrailEffectChanged)
+                    SettingsDivider()
                     LabeledSwitch("Show near-miss flash", settings.showNearMissFlash, onShowNearMissFlashChanged)
+                    SettingsDivider()
                     LabeledSwitch("Haptic feedback", settings.hapticsEnabled, onHapticsChanged)
                 }
             }
-            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("Audio", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                    SettingsSlider("Music ${settings.musicVolume.fmt(2)}", settings.musicVolume, 0f..1f, onMusicVolumeChanged)
-                    SettingsSlider("SFX ${settings.sfxVolume.fmt(2)}", settings.sfxVolume, 0f..1f, onSfxVolumeChanged)
+            SettingsSectionCard("Audio") {
+                SettingsRowCard {
+                    SettingsSlider("Music ${(settings.musicVolume * 100f).fmt(0)}%", settings.musicVolume, 0f..1f, onMusicVolumeChanged)
+                    SettingsDivider()
+                    SettingsSlider("SFX ${(settings.sfxVolume * 100f).fmt(0)}%", settings.sfxVolume, 0f..1f, onSfxVolumeChanged)
                 }
             }
-            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("Visual", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                    SettingsSlider("HUD ${((settings.hudOpacity) * 100f).fmt(0)}%", settings.hudOpacity, 0.3f..1f, onHudOpacityChanged)
-                    Text("Particle Density", color = Color.White)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ParticleDensity.entries.forEach { density ->
-                            val selected = density == settings.particleDensity
-                            Card(
-                                shape = RoundedCornerShape(999.dp),
-                                colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFF39D39B) else Color.White.copy(alpha = 0.10f)),
-                                modifier = Modifier.weight(1f).clickable { onParticleDensityChanged(density) }
-                            ) {
-                                Text(
-                                    density.displayName,
-                                    modifier = Modifier.padding(vertical = 10.dp).fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                    color = if (selected) Color.Black else Color.White
-                                )
+            SettingsSectionCard("Visual") {
+                SettingsRowCard {
+                    SettingsSlider("HUD ${(settings.hudOpacity * 100f).fmt(0)}%", settings.hudOpacity, 0.3f..1f, onHudOpacityChanged)
+                    SettingsDivider()
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                        Text("Particle Density", color = AppColors.textPrimary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1.3f)) {
+                            ParticleDensity.values().forEach { density ->
+                                val selected = density == settings.particleDensity
+                                Card(
+                                    shape = RoundedCornerShape(999.dp),
+                                    colors = CardDefaults.cardColors(containerColor = if (selected) AppColors.primaryGreen else AppColors.backgroundCard),
+                                    modifier = Modifier.weight(1f).height(36.dp).clickable { onParticleDensityChanged(density) }
+                                ) {
+                                    Text(
+                                        density.displayName,
+                                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                                        textAlign = TextAlign.Center,
+                                        color = if (selected) Color.Black else AppColors.textMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -875,3 +992,79 @@ private fun SettingsScreen(
         }
     }
 }
+
+@Composable
+private fun SettingsSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard.copy(alpha = 0.96f)),
+        modifier = Modifier.border(1.dp, AppColors.primaryGreen.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SettingsSectionHeader(title)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionHeader(title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+        Box(Modifier.width(3.dp).height(14.dp).background(AppColors.primaryGreen, RoundedCornerShape(99.dp)))
+        Text(
+            title.uppercase(),
+            color = AppColors.primaryGreen,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp, lineHeight = 16.sp),
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp
+        )
+    }
+}
+
+@Composable
+private fun SettingsRowCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard.copy(alpha = 0.92f)),
+        modifier = Modifier.border(1.dp, AppColors.primaryGreen.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), content = content)
+    }
+}
+
+@Composable
+private fun SettingsDivider() {
+    Spacer(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(AppColors.primaryGreen.copy(alpha = 0.08f))
+    )
+}
+
+@Composable
+private fun HomeAtmosphereLayer(shimmerOffset: Float) {
+    Canvas(Modifier.fillMaxSize()) {
+        val rippleAlpha = 0.08f
+        val centerY = size.height * (0.28f + shimmerOffset * 0.42f)
+        drawCircle(
+            AppColors.accentTeal.copy(alpha = rippleAlpha),
+            radius = size.minDimension * 0.38f,
+            center = Offset(size.width * 0.72f, centerY),
+            style = Stroke(width = size.minDimension * 0.008f)
+        )
+        drawCircle(
+            AppColors.primaryGreen.copy(alpha = rippleAlpha * 0.8f),
+            radius = size.minDimension * 0.22f,
+            center = Offset(size.width * 0.18f, size.height * 0.68f),
+            style = Stroke(width = size.minDimension * 0.007f)
+        )
+        repeat(18) { index ->
+            val x = size.width * (0.08f + (index * 0.055f) % 0.84f)
+            val y = size.height * (0.12f + (index * 0.043f + shimmerOffset * 0.08f) % 0.78f)
+            drawCircle(Color.White.copy(alpha = 0.02f), radius = 1.5f + (index % 3) * 0.7f, center = Offset(x, y))
+        }
+    }
+}
+
+private fun formatPercent(value: Float): String = "${(value * 100f).toInt()}%"
