@@ -6,7 +6,7 @@ Download (release build):
 
 - File: `app-release.apk`
 - Location: `app/build/outputs/apk/release/app-release.apk` (≈ 14.6 MB)
-- Quick download link (after upload): https://github.com/sharancode3/Hydra-leaf-apk/releases/tag/v1.2.0
+- Quick download link (after upload): https://github.com/sharancode3/Hydra-leaf-apk/releases/tag/v1.2.0-r1
 
 Why you'll like it:
 
@@ -31,13 +31,19 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 Make it downloadable on GitHub (3 easy steps):
 
 1. Open your repo's **Releases** page and click **Draft a new release**. 
-2. Select tag `v1.2.0` (or create it), give the release a title like **Hydra Leaf v1.2.0**, and paste a 1-line note: `A small, joyful river game — release v1.2.0`.
+2. Select tag `v1.2.0-r1` (already pushed), give the release a title like **Hydra Leaf v1.2.0**, and paste a 1-line note: `A small, joyful river game - release v1.2.0`.
 3. Drag `app-release.apk` into the assets area and click **Publish release**.
 
 After publishing the asset the direct download URL will be:
 
 ```
 https://github.com/sharancode3/Hydra-leaf-apk/releases/download/v1.2.0/app-release.apk
+
+If you publish from tag `v1.2.0-r1`, use:
+
+```
+https://github.com/sharancode3/Hydra-leaf-apk/releases/download/v1.2.0-r1/app-release.apk
+```
 ```
 
 Highlights in v1.2.0
@@ -51,7 +57,7 @@ Files you care about
 
 - `app/src/main/java/.../GameViewModel.kt` — gameplay + persistence
 - `app/src/main/java/.../LeafGameScreen.kt` — game rendering & HUD
-- `app/build.gradle.kts` — version bump: `versionName = "1.2.0"`, `versionCode = 2`
+- `app/build.gradle.kts` — version bump: `versionName = "1.2.0"`, `versionCode = 3`
 
 If you want to tweak or extend
 
