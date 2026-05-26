@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        gameViewModel.pauseForBackground()
         modeCollectorJob?.cancel()
         modeCollectorJob = null
         lifecycleScope.launch {

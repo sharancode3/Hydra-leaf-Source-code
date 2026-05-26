@@ -7,9 +7,10 @@ enum class SensitivityPreset { GENTLE, BALANCED, RESPONSIVE }
 enum class AccessibilityMode { STANDARD, TAP_BASED }
 enum class DifficultyPreset(val displayName: String) { EASY("Easy"), NORMAL("Normal"), HARD("Hard"), EXTREME("Extreme") }
 enum class ParticleDensity(val displayName: String) { LOW("Low"), MEDIUM("Medium"), HIGH("High") }
+enum class HapticIntensity(val displayName: String) { OFF("Off"), LOW("Low"), MEDIUM("Medium"), HIGH("High") }
 
 // ── Game State Machine ───────────────────────────────────────────────────────
-enum class GamePhase { IDLE, CALIBRATING, COUNTDOWN, PLAYING, DEAD, GAME_OVER }
+enum class GamePhase { IDLE, CALIBRATING, COUNTDOWN, PLAYING, PAUSED, DEAD, GAME_OVER }
 
 // ── Power-ups ────────────────────────────────────────────────────────────────
 enum class PowerUpType(val displayName: String, val durationSec: Float, val icon: String) {
@@ -37,7 +38,25 @@ enum class LeafSkin(val displayName: String, val cost: Int) {
     FIRE("Flame Leaf", 350),
     NEON("Neon Glow", 500),
     COSMIC("Cosmic Swirl", 750),
-    RAINBOW("Rainbow Leaf", 1000)
+    RAINBOW("Rainbow Leaf", 1000),
+    SHADOW("Shadow", 900),
+    AURORA("Aurora", 950),
+    JADE("Jade", 900),
+    CHERRY_BLOSSOM("Cherry Blossom", 950),
+    STORM("Storm", 1100),
+    GALAXY("Galaxy", 1200)
+}
+
+enum class TrailSkin(val displayName: String, val cost: Int) {
+    CLASSIC("Classic Trail", 0),
+    SPARKLE("Sparkle", 150),
+    BUBBLE("Bubble", 200),
+    FIRE("Fire", 300),
+    ICE_CRYSTALS("Ice Crystals", 300),
+    NEON_LINE("Neon Line", 350),
+    PETALS("Petals", 400),
+    LIGHTNING("Lightning", 500),
+    STARDUST("Stardust", 500)
 }
 
 enum class RiverTheme(val displayName: String, val cost: Int) {
@@ -66,6 +85,7 @@ data class RunRecord(
     val score: Int,
     val level: Int,
     val drops: Int,
+    val obstaclesCleared: Int = 0,
     val durationSec: Float,
     val dateEpochMillis: Long,
     val skin: LeafSkin,
@@ -87,12 +107,12 @@ enum class HurdleStyle { WOOD, STONE, ICE, LILY_PAD }
 enum class DayPhase { DAWN, DAY, DUSK, NIGHT }
 
 // ── Daily Challenges ─────────────────────────────────────────────────────────
-enum class ChallengeType(val description: String, val rewardDrops: Int) {
-    NO_POWER_UPS("Survive 60 s without power-ups", 100),
-    SPEED_RUN("Score 500 in under 90 s", 150),
-    FOG_ONLY("Clear 20 hurdles in fog", 120),
-    DOUBLE_HURDLES("Survive 30 double-row hurdles", 200),
-    CALM_ONLY("Score 300 during Calm Waters", 100)
+enum class ChallengeType(val description: String, val rewardDrops: Int, val rewardCoins: Int) {
+    NO_POWER_UPS("Survive 60 s without power-ups", 100, 1),
+    SPEED_RUN("Score 500 in under 90 s", 150, 1),
+    FOG_ONLY("Clear 20 hurdles in fog", 120, 2),
+    DOUBLE_HURDLES("Survive 30 double-row hurdles", 200, 3),
+    CALM_ONLY("Score 300 during Calm Waters", 100, 1)
 }
 
 // ── Control Defaults ─────────────────────────────────────────────────────────
@@ -130,6 +150,7 @@ data class ControlSettings(
     val musicVolume: Float = 0.8f,
     val sfxVolume: Float = 0.9f,
     val hapticsEnabled: Boolean = true,
+    val hapticIntensity: HapticIntensity = HapticIntensity.MEDIUM,
     val showSpeedIndicator: Boolean = true,
     val showTrailEffect: Boolean = true,
     val showNearMissFlash: Boolean = true,
@@ -158,6 +179,14 @@ data class DailyChallenge(
     val completed: Boolean = false,
     val progress: Float = 0f,
     val dayIndex: Int = 0
+)
+
+data class ChallengeProgress(
+    val challengeId: String,
+    val current: Int,
+    val target: Int,
+    val completedDate: String? = null,
+    val claimed: Boolean = false
 )
 
 // ── Adaptive difficulty snapshot ─────────────────────────────────────────────

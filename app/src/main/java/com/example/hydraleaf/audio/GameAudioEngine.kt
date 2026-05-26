@@ -99,6 +99,11 @@ class GameAudioEngine(private val context: Context) {
         loadOptionalExternalAudio()
     }
 
+    fun preload() {
+        // Intentionally empty: constructing the engine eagerly loads clips, sound pool,
+        // and any available raw assets through the initializer above.
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     fun start() {

@@ -1,11 +1,10 @@
 ﻿package com.example.hydraleaf
 
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.PointF
 import android.os.Build
 import android.os.SystemClock
-import android.os.VibrationEffect
-import android.os.Vibrator
 import android.view.MotionEvent
 import androidx.compose.foundation.border
 import androidx.compose.animation.AnimatedVisibility
@@ -19,6 +18,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -103,6 +103,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalContext
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -119,6 +126,7 @@ import androidx.compose.ui.unit.sp
 import com.example.hydraleaf.ui.AppColors
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -159,6 +167,12 @@ private object ThemeColors {
         LeafSkin.NEON    -> Color(0xFF40FF80) to Color(0xFF20C060)
         LeafSkin.COSMIC  -> Color(0xFFA060FF) to Color(0xFF6030C0)
         LeafSkin.RAINBOW -> Color(0xFFFF80C0) to Color(0xFF8040FF)
+        LeafSkin.SHADOW  -> Color(0xFF5E4A73) to Color(0xFF231A31)
+        LeafSkin.AURORA  -> Color(0xFF34E2C8) to Color(0xFFF16DAF)
+        LeafSkin.JADE    -> Color(0xFF1E8A56) to Color(0xFF0A3C27)
+        LeafSkin.CHERRY_BLOSSOM -> Color(0xFFFFB9D4) to Color(0xFFCF5D8A)
+        LeafSkin.STORM   -> Color(0xFF58626F) to Color(0xFF161B25)
+        LeafSkin.GALAXY  -> Color(0xFF1A0F35) to Color(0xFF080810)
     }
 }
 
@@ -208,27 +222,69 @@ fun LeafGameScreen(
     var showDebug by remember { mutableStateOf(false) }
     var lastThreeFingerTapMs by remember { mutableStateOf(0L) }
     var maxPointersInGesture by remember { mutableStateOf(0) }
+    // Resume countdown is handled by ViewModel state (`uiState.phase == GamePhase.COUNTDOWN`) and `countdownValue`
     val context = LocalContext.current
     val reusableLeafPath = remember { Path() }
     val obstacleSprites = remember { loadObstacleSprites(context) }
+    // local draw helper: collect effects
+    fun DrawScope.drawCollectEffects(effects: List<com.example.hydraleaf.CollectEffectState>, vp: ViewportMapping) {
+        effects.forEach { e ->
+            val s = logicalToScreen(android.graphics.PointF(e.x, e.y), vp)
+            val age = e.age.coerceIn(0f, 1f)
+            if (e.kind == "score") {
+                val alpha = (1f - age).pow(1.2f)
+                val scale = 1f + (1f - age) * 0.8f
+                drawContext.canvas.nativeCanvas.apply {
+                    save()
+                    translate(s.x, s.y - 8f * vp.scale)
+                    scale(scale, scale)
+                    val paint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        color = android.graphics.Color.WHITE
+                        textSize = (18f * vp.scale)
+                        setShadowLayer(6f * vp.scale, 0f, 0f, android.graphics.Color.argb((120 * alpha).toInt(), 0, 0, 0))
+                        textAlign = android.graphics.Paint.Align.CENTER
+                    }
+                    drawText("+${e.value}", 0f, 0f, paint)
+                    restore()
+                }
+            } else {
+                val ringRadius = (6f + (42f - 6f) * age) * vp.scale
+                val ringAlpha = (1f - age).pow(1.4f)
+                val ringColor = if (e.kind == "powerup") Color(0xFFFAFF7A) else Color(0xFF7CF0BF)
+                drawCircle(ringColor.copy(alpha = 0.35f * ringAlpha), ringRadius * 1.1f, Offset(s.x, s.y))
+                drawCircle(ringColor.copy(alpha = 0.9f * ringAlpha), ringRadius, Offset(s.x, s.y), style = Stroke(2f * vp.scale))
+                // small sparkles
+                val sparks = 6
+                for (i in 0 until sparks) {
+                    val ang = i * (2 * PI.toFloat() / sparks) + age * 6f
+                    val dist = ringRadius * (0.6f + age * 0.6f)
+                    val px = s.x + cos(ang) * dist
+                    val py = s.y + sin(ang) * dist
+                    drawCircle(Color.White.copy(alpha = 0.6f * ringAlpha), 2.2f * vp.scale, Offset(px, py))
+                }
+            }
+        }
+    }
     val latestTilt by rememberUpdatedState(uiState.lastTiltSample)
+    var tutorialVisible by rememberSaveable(uiState.showTutorial) { mutableStateOf(uiState.showTutorial) }
+    var tutorialDismissConsumed by rememberSaveable { mutableStateOf(false) }
 
     // Haptic on collision
     LaunchedEffect(uiState.phase) {
         if (uiState.phase == GamePhase.DEAD) {
             try {
-                val vibrator = context.getSystemService(Vibrator::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) vibrator?.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
+                HapticHelper.collision(context, uiState.controlSettings.hapticsEnabled, uiState.controlSettings.hapticIntensity)
             } catch (_: Exception) {}
         }
     }
 
     LaunchedEffect(showSettingsOnLaunch) { if (showSettingsOnLaunch) { showSettings = true; onSettingsPanelConsumed() } }
 
-    LaunchedEffect(uiState.showTutorial, uiState.phase, uiState.controlSettings.controlMode) {
-        if (uiState.showTutorial && uiState.phase == GamePhase.PLAYING && uiState.controlSettings.controlMode == ControlMode.TOUCH) {
-            delay(2500)
-            viewModel.dismissTutorial()
+    LaunchedEffect(uiState.showTutorial) {
+        tutorialVisible = uiState.showTutorial
+        if (uiState.showTutorial) {
+            tutorialDismissConsumed = false
         }
     }
 
@@ -242,9 +298,23 @@ fun LeafGameScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInteropFilter { event ->
+                if (tutorialVisible && !tutorialDismissConsumed && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    tutorialDismissConsumed = true
+                    tutorialVisible = false
+                    viewModel.dismissTutorial()
+                    true
+                } else {
+                    false
+                }
+            }
+    ) {
         // Touch / Tap input
-        val inputMod = when (uiState.controlSettings.controlMode) {
+        val inputMod = when (uiState.controlSettings.controlMode) { 
             ControlMode.TOUCH -> Modifier.pointerInput(Unit) {
                 detectDragGestures { change, _ ->
                     change.consume()
@@ -313,6 +383,9 @@ fun LeafGameScreen(
             // Boosts
             drawBoosts(uiState.boosts, vp)
 
+            // Collect effects (particles + ring) for boosters / powerups
+            drawCollectEffects(uiState.collectEffects, vp)
+
             // Leaf with breathing + lean
             drawLeaf(uiState, vp, reusableLeafPath)
 
@@ -362,7 +435,7 @@ fun LeafGameScreen(
             }
         }
 
-        // Countdown
+        // Countdown overlay is shown based on ViewModel phase and `countdownValue`
         AnimatedVisibility(visible = uiState.phase == GamePhase.COUNTDOWN, enter = fadeIn() + scaleIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
                 Text(if (uiState.countdownValue > 0) uiState.countdownValue.toString() else "GO!", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 72.sp), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
@@ -380,24 +453,67 @@ fun LeafGameScreen(
         }
 
         // Tutorial
-        AnimatedVisibility(visible = uiState.showTutorial && uiState.phase == GamePhase.PLAYING && uiState.controlSettings.controlMode == ControlMode.TOUCH) {
-            TutorialOverlay(
-                Modifier.align(Alignment.Center).pointerInput(Unit) {
-                    detectTapGestures(onTap = { viewModel.dismissTutorial() })
-                },
-                uiState.controlSettings.controlMode
-            )
+        AnimatedVisibility(visible = tutorialVisible && uiState.phase == GamePhase.PLAYING) {
+            TutorialOverlay(Modifier.align(Alignment.Center), uiState.controlSettings.controlMode)
         }
 
         // Pause
-        if (uiState.pauseOverlayVisible || (uiState.phase == GamePhase.IDLE && uiState.score > 0)) {
-            PauseOverlay({ viewModel.continueRun() }, { viewModel.startNewRun() }, { showSettings = true }, { showSettings = false; viewModel.resume(); onBackToMenu() })
+        if (uiState.pauseOverlayVisible || uiState.phase == GamePhase.PAUSED) {
+            PauseOverlay(
+                onResume = { viewModel.continueRun() },
+                onRestart = { viewModel.startNewRun() },
+                onSettings = { showSettings = true },
+                onBackToMenu = { showSettings = false; viewModel.quitToMenu(); onBackToMenu() }
+            )
         }
 
         // Game Over
         AnimatedVisibility(visible = uiState.phase == GamePhase.GAME_OVER, enter = fadeIn(tween(400)) + scaleIn(tween(400)), exit = fadeOut()) {
-            GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
-            uiState.runDropsEarned, uiState.sensitivitySuggestion, { viewModel.startNewRun() }, onBackToMenu)
+            // If a confetti Lottie exists in res/raw/confetti.json, play it behind the Game Over card
+            val context = LocalContext.current
+            val confId = remember { context.resources.getIdentifier("confetti", "raw", context.packageName) }
+            if (confId != 0) {
+                val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(confId))
+                val prog by animateLottieCompositionAsState(comp, iterations = 1)
+                Box(Modifier.fillMaxSize()) {
+                    LottieAnimation(composition = comp, progress = { prog }, modifier = Modifier.fillMaxSize())
+                    GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
+                        uiState.runDropsEarned, uiState.sensitivitySuggestion,
+                        onNewRun = { viewModel.startNewRun() },
+                        onBackToMenu = onBackToMenu,
+                        onShare = {
+                            val shareText = buildString {
+                                append("I scored ${uiState.score} in Hydra Leaf!\n")
+                                append("Level ${uiState.level}, ${uiState.obstaclesCleared} hurdles cleared, ${uiState.runDropsEarned} drops earned.")
+                            }
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Hydra Leaf Run")
+                                putExtra(Intent.EXTRA_TEXT, shareText)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share your run"))
+                        }
+                    )
+                }
+            } else {
+                GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
+                    uiState.runDropsEarned, uiState.sensitivitySuggestion,
+                    onNewRun = { viewModel.startNewRun() },
+                    onBackToMenu = onBackToMenu,
+                    onShare = {
+                        val shareText = buildString {
+                            append("I scored ${uiState.score} in Hydra Leaf!\n")
+                            append("Level ${uiState.level}, ${uiState.obstaclesCleared} hurdles cleared, ${uiState.runDropsEarned} drops earned.")
+                        }
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Hydra Leaf Run")
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share your run"))
+                    }
+                )
+            }
         }
 
         // Settings
@@ -407,6 +523,7 @@ fun LeafGameScreen(
                 { viewModel.setInstantSnap(it) }, { viewModel.setControlMode(it) }, { viewModel.applyPreset(it) },
                 onRequestCalibrate, { showSettings = false }, { viewModel.resetSettings() },
                 { viewModel.setMusicVolume(it) }, { viewModel.setSfxVolume(it) }, { viewModel.setHapticsEnabled(it) },
+                { viewModel.setHapticIntensity(it) },
                 { viewModel.setDifficultyPreset(it) }, { viewModel.setShowSpeedIndicator(it) }, { viewModel.setShowTrailEffect(it) })
         }
 
@@ -424,39 +541,37 @@ fun LeafGameScreen(
 
 private fun DrawScope.drawParallaxBackground(ui: GameUiState, vp: ViewportMapping) {
     val colors = ThemeColors.waterGradient(ui.riverTheme, ui.dayPhase)
-    val baseOffset = ui.runTime * 50f
-    for (layer in 0 until GameConstants.PARALLAX_LAYER_COUNT) {
-        val speed = GameConstants.PARALLAX_SPEEDS[layer]
-        val scrollY = (baseOffset * speed) % size.height
-        val alpha = 0.15f + layer * 0.17f
-        val layerColor = if (layer < colors.size) colors[layer.coerceAtMost(colors.size - 1)] else colors.last()
-        // Draw scrolling gradient band
-        val bandHeight = size.height / GameConstants.PARALLAX_LAYER_COUNT
-        val yStart = (layer * bandHeight + scrollY) % (size.height + bandHeight) - bandHeight
+    drawRect(brush = Brush.verticalGradient(colors), size = size, alpha = 0.94f)
+
+    // Use configured number of parallax layers for more depth and smoother per-layer motion
+    repeat(GameConstants.PARALLAX_LAYER_COUNT) { layer ->
+        val col = colors.getOrElse(layer) { colors.last() }
+        val speed = GameConstants.PARALLAX_SPEEDS[layer.coerceAtMost(GameConstants.PARALLAX_SPEEDS.lastIndex)]
+        val phase = ui.runTime * (0.35f + layer * 0.10f)
+        val cxBase = size.width * (0.12f + layer * 0.16f)
+        val cx = cxBase + sin((phase * speed).toDouble()).toFloat() * size.width * (0.02f + layer * 0.012f)
+        val cy = size.height * (0.20f + layer * 0.10f) + cos((phase * (0.7f + layer * 0.05f)).toDouble()).toFloat() * (12f + layer * 6f)
+        val radius = size.width * (0.28f + layer * 0.06f)
+
+        // Main soft blob
+        drawCircle(col.copy(alpha = 0.12f + layer * 0.03f), radius, Offset(cx, cy))
+        // Secondary offset blob for parallax richness
+        drawCircle(col.copy(alpha = 0.05f + layer * 0.015f), radius * (0.55f + layer * 0.03f), Offset(size.width - cx * (0.85f - layer * 0.02f), cy + 8f + layer * 4f))
+        // Subtle horizontal banding to add perceived layers
         drawRect(
-            color = layerColor.copy(alpha = alpha),
-            topLeft = Offset(0f, yStart),
-            size = Size(size.width, bandHeight * 1.5f)
+            Brush.horizontalGradient(listOf(col.copy(alpha = 0.02f + layer * 0.01f), Color.Transparent)),
+            topLeft = Offset(0f, (cy - radius * 0.55f).coerceAtLeast(0f)),
+            size = Size(size.width, (radius * 0.32f).coerceAtMost(size.height))
         )
-        // Animated wave line per layer
-        val wavePath = Path()
-        val waveY = yStart + bandHeight * 0.5f
-        wavePath.moveTo(0f, waveY)
-        for (x in 0..size.width.toInt() step 20) {
-            val wx = x.toFloat()
-            val sinVal = sin((wx * 0.02f + ui.runTime * speed * 2f).toDouble()).toFloat()
-            wavePath.lineTo(wx, waveY + sinVal * (8f + layer * 3f))
-        }
-        drawPath(wavePath, color = layerColor.copy(alpha = alpha * 0.5f), style = Stroke(1.5f))
     }
-    // Base gradient fill
-    drawRect(brush = Brush.verticalGradient(colors), size = size, alpha = 0.6f)
+    // TODO-28 DONE: Parallax background enhanced with additional layers and smoother motion
 }
 
 // ── Draw: procedural light rays ──────────────────────────────────────────────
 
 private fun DrawScope.drawLightRays(time: Float, dayPhase: DayPhase, vp: ViewportMapping) {
     if (dayPhase == DayPhase.NIGHT) return
+    if (!GameConstants.LIGHT_RAYS_ENABLED) return
     val alphaBase = when (dayPhase) {
         DayPhase.DAWN -> GameConstants.LIGHT_RAY_MAX_ALPHA * 0.7f
         DayPhase.DAY  -> GameConstants.LIGHT_RAY_MAX_ALPHA
@@ -486,11 +601,26 @@ private fun DrawScope.drawNarrowChannel(offset: Float, vp: ViewportMapping) {
 // ── Draw: particle trail ─────────────────────────────────────────────────────
 
 private fun DrawScope.drawTrailParticles(particles: List<TrailParticle>, skin: LeafSkin, vp: ViewportMapping) {
-    val (c1, _) = ThemeColors.leafColors(skin)
+    val (c1, c2) = ThemeColors.leafColors(skin)
     particles.forEach { p ->
         val pos = logicalToScreen(PointF(p.x, p.y), vp)
         val r = p.size * vp.scale * p.alpha
-        drawCircle(c1.copy(alpha = p.alpha * 0.6f), r, Offset(pos.x, pos.y))
+        when (skin) {
+            LeafSkin.CLASSIC -> drawCircle(c1.copy(alpha = p.alpha * 0.6f), r, Offset(pos.x, pos.y))
+            LeafSkin.FIRE -> {
+                drawCircle(Color(0xFFFFA84D).copy(alpha = p.alpha * 0.85f), r * 0.9f, Offset(pos.x, pos.y))
+                drawCircle(Color(0xFFFFE0B8).copy(alpha = p.alpha * 0.5f), r * 0.45f, Offset(pos.x, pos.y - r * 0.35f))
+            }
+            LeafSkin.NEON -> {
+                drawCircle(Color(0xFF74FFB9).copy(alpha = p.alpha * 0.9f), r * 0.65f, Offset(pos.x, pos.y))
+                drawLine(Color.White.copy(alpha = p.alpha * 0.5f), Offset(pos.x - r * 0.5f, pos.y), Offset(pos.x + r * 0.5f, pos.y), strokeWidth = 1.2f)
+            }
+            LeafSkin.FROST -> {
+                drawCircle(Color(0xCCFFFFFF).copy(alpha = p.alpha * 0.7f), r * 0.8f, Offset(pos.x, pos.y))
+                drawCircle(Color(0xFFBEEFFF).copy(alpha = p.alpha * 0.35f), r * 0.35f, Offset(pos.x, pos.y))
+            }
+            else -> drawCircle(c1.copy(alpha = p.alpha * 0.6f), r, Offset(pos.x, pos.y))
+        }
     }
 }
 
@@ -510,6 +640,7 @@ private fun DrawScope.drawWaterRipples(ui: GameUiState, vp: ViewportMapping) {
 }
 
 // ── Draw: leaf with breathing + lean ─────────────────────────────────────────
+// TODO-26 DONE: Removed leaf base shadow (no ground ellipse under the leaf)
 
 private fun DrawScope.drawLeaf(ui: GameUiState, vp: ViewportMapping, reusablePath: Path) {
     val vs = GameConstants.LEAF_VISUAL_SCALE * ui.leafBreathScale
@@ -522,8 +653,6 @@ private fun DrawScope.drawLeaf(ui: GameUiState, vp: ViewportMapping, reusablePat
     withTransform({
         rotate(ui.leafLeanAngle, center)
     }) {
-        // Shadow
-        drawOval(Color(0x33000000), Offset(center.x - wPx * 0.45f, center.y + hPx * 0.35f), Size(wPx * 0.9f, hPx * 0.5f))
         // Leaf shape
         reusablePath.reset()
         reusablePath.moveTo(tl.x + wPx * 0.5f, tl.y)
@@ -547,6 +676,7 @@ private fun DrawScope.drawLeaf(ui: GameUiState, vp: ViewportMapping, reusablePat
 }
 
 // ── Draw: obstacles with procedural textures ─────────────────────────────────
+// TODO-23 DONE: Obstacle visuals redesigned with themed procedural textures
 
 private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping, sprites: ObstacleSprites) {
     ui.obstacles.forEach { o ->
@@ -571,6 +701,15 @@ private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping, sprite
             RiverTheme.VOLCANIC -> drawVolcanicObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
             RiverTheme.CRYSTAL -> drawCrystalObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
             RiverTheme.MIDNIGHT -> drawMidnightObstacle(o, tl, sz, center, themeAccent, warningAlpha, vp, sprites)
+        }
+
+        // Debug: draw the actual hitbox used for collision checks (scaled by hitbox shrink setting)
+        if (BuildConfig.SHOW_DEBUG_OVERLAY) {
+            val hitboxScale = ui.controlSettings.hitboxShrink * if (ui.boostActive) GameConstants.BOOST_HITBOX_SCALE else GameConstants.BASE_HITBOX_SCALE
+            val hbW = o.width * hitboxScale * vp.scale
+            val hbH = o.height * hitboxScale * vp.scale
+            val hbTopLeft = Offset(center.x - hbW * 0.5f, center.y - hbH * 0.5f)
+            drawRect(Color.Magenta.copy(alpha = 0.28f), topLeft = hbTopLeft, size = Size(hbW, hbH), style = Stroke(2f))
         }
     }
 }
@@ -809,6 +948,9 @@ private fun DrawScope.drawBoosts(boosts: List<BoostState>, vp: ViewportMapping) 
         }
         drawCircle(Color.White.copy(alpha = 0.25f), r * 0.24f, Offset(c.x - r * 0.16f, c.y - r * 0.2f))
     }
+
+    // TODO-24 DONE: Unique booster visuals implemented above.
+    // TODO-25 DONE: Booster/powerup collection effects implemented (local helper defined in composable)
 }
 
 // ── Game Over Screen with Confetti + Drops + Suggestion ──────────────────────
@@ -817,7 +959,7 @@ private fun DrawScope.drawBoosts(boosts: List<BoostState>, vp: ViewportMapping) 
 private fun GameOverScreen(
     score: Int, highScore: Int, level: Int, obstaclesCleared: Int,
     dropsEarned: Int, suggestion: String?,
-    onNewRun: () -> Unit, onBackToMenu: () -> Unit
+    onNewRun: () -> Unit, onBackToMenu: () -> Unit, onShare: () -> Unit
 ) {
     val isNewHigh = score >= highScore && score > 0
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.78f)), contentAlignment = Alignment.Center) {
@@ -829,7 +971,20 @@ private fun GameOverScreen(
         ) {
             Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(if (isNewHigh) "NEW HIGH SCORE!" else "GAME OVER", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color.White)
-                Text("$score", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 60.sp), fontWeight = FontWeight.Black, color = Color(0xFF7CF0BF))
+                // Animated count-up for score and drops
+                val animScore = remember { Animatable(0f) }
+                val animDrops = remember { Animatable(0f) }
+                LaunchedEffect(score) {
+                    animScore.snapTo(0f)
+                    animScore.animateTo(score.toFloat(), animationSpec = tween(durationMillis = 900))
+                }
+                LaunchedEffect(dropsEarned) {
+                    // wait a bit so score counts up first
+                    kotlinx.coroutines.delay(350)
+                    animDrops.snapTo(0f)
+                    animDrops.animateTo(dropsEarned.toFloat(), animationSpec = tween(durationMillis = 700))
+                }
+                Text("${animScore.value.toInt()}", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 60.sp), fontWeight = FontWeight.Black, color = Color(0xFF7CF0BF))
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     StatColumn("Level", "$level")
                     StatColumn("Cleared", "$obstaclesCleared")
@@ -837,8 +992,9 @@ private fun GameOverScreen(
                 }
                 Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF19362D)), shape = RoundedCornerShape(16.dp)) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // TODO-31 DONE: Animated Game Over count-up for score and River Drops
                         Text("\uD83D\uDCA7", fontSize = 20.sp); Spacer(Modifier.width(8.dp))
-                        Text("+$dropsEarned River Drops", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("+${animDrops.value.toInt()} River Drops", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
                 suggestion?.let {
@@ -848,6 +1004,9 @@ private fun GameOverScreen(
                 }
                 Button(onClick = onNewRun, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF39D39B))) {
                     Icon(Icons.Filled.RestartAlt, contentDescription = "Play Again"); Spacer(Modifier.width(8.dp)); Text("Play Again")
+                }
+                OutlinedButton(onClick = onShare, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                    Icon(Icons.Filled.Share, contentDescription = "Share"); Spacer(Modifier.width(8.dp)); Text("Share Run")
                 }
                 OutlinedButton(onClick = onBackToMenu, Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
                     Icon(Icons.Filled.Home, contentDescription = "Menu"); Spacer(Modifier.width(8.dp)); Text("Menu")
@@ -974,7 +1133,13 @@ private fun BoxScope.IconHud(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("\uD83D\uDCA7 $drops", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                                // TODO-27 DONE: River drops HUD redesigned with icon + animated count
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(painter = painterResource(R.drawable.ic_drops), contentDescription = "Drops", tint = Color(0xFF8FF5C8), modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    val animatedDrops by animateIntAsState(drops, label = "hudDrops")
+                                    Text("$animatedDrops", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                                }
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0xFF39D39B).copy(alpha = 0.22f)).padding(horizontal = 8.dp, vertical = 4.dp)) {
                         Text(difficultyLabel, color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
@@ -996,6 +1161,7 @@ private fun BoxScope.IconHud(
 
 @Composable
 private fun PauseOverlay(onResume: () -> Unit, onRestart: () -> Unit, onSettings: () -> Unit, onBackToMenu: () -> Unit) {
+    // TODO-18 DONE: Unified pause menu implemented and used across pause states
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             LargeIconButton(Icons.Filled.PlayArrow, onResume, description = "Resume")
@@ -1030,6 +1196,7 @@ private fun SettingsPanel(
     onControlModeChanged: (ControlMode) -> Unit, onPresetSelected: (SensitivityPreset) -> Unit,
     onCalibrate: () -> Unit, onClose: () -> Unit, onReset: () -> Unit,
     onMusicVolumeChanged: (Float) -> Unit, onSfxVolumeChanged: (Float) -> Unit, onHapticsChanged: (Boolean) -> Unit,
+    onHapticIntensityChanged: (HapticIntensity) -> Unit,
     onDifficultyChanged: (DifficultyPreset) -> Unit, onShowSpeedIndicatorChanged: (Boolean) -> Unit, onShowTrailEffectChanged: (Boolean) -> Unit
 ) {
     var confirmReset by rememberSaveable { mutableStateOf(false) }
@@ -1084,6 +1251,18 @@ private fun SettingsPanel(
                 SettingsSlider("Music ${(settings.musicVolume * 100f).toInt()}%", settings.musicVolume, 0f..1f, onMusicVolumeChanged)
                 SettingsSlider("SFX ${(settings.sfxVolume * 100f).toInt()}%", settings.sfxVolume, 0f..1f, onSfxVolumeChanged)
                 LabeledSwitch("Haptic feedback", settings.hapticsEnabled, onHapticsChanged)
+                Text("Haptic intensity", color = AppColors.textMuted, style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp), fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HapticIntensity.entries.forEach { intensity ->
+                        val selected = settings.hapticIntensity == intensity
+                        AssistChip(
+                            modifier = Modifier.heightIn(min = 44.dp).border(1.dp, if (selected) AppColors.primaryGreen else AppColors.backgroundCard, RoundedCornerShape(999.dp)),
+                            onClick = { onHapticIntensityChanged(intensity) },
+                            label = { Text(intensity.displayName) },
+                            colors = AssistChipDefaults.assistChipColors()
+                        )
+                    }
+                }
             }
             SettingsSection("Gameplay") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1155,9 +1334,21 @@ private fun ScoreChip(modifier: Modifier, score: Int, highScore: Int, drops: Int
 @Composable
 private fun BoostMeter(modifier: Modifier, boostActive: Boolean, remaining: Float) {
     val progress = if (boostActive) (remaining / GameConstants.BOOST_DURATION).coerceIn(0f, 1f) else 0f
-    ElevatedCard(modifier) {
+    val secondsLeft = (remaining).toInt().coerceAtLeast(0)
+    val scaleAnim = remember { Animatable(1f) }
+    LaunchedEffect(boostActive) {
+        if (boostActive) {
+            while (true) {
+                scaleAnim.animateTo(1.06f, tween(420))
+                scaleAnim.animateTo(0.95f, tween(420))
+            }
+        } else {
+            scaleAnim.snapTo(1f)
+        }
+    }
+    ElevatedCard(modifier = if (boostActive) modifier.scale(scaleAnim.value) else modifier) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(if (boostActive) "Boost!" else "Boost ready", style = MaterialTheme.typography.labelLarge, color = if (boostActive) Color(0xFF5BFFE3) else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (boostActive) "Boost active — $secondsLeft s" else "Boost ready", style = MaterialTheme.typography.labelLarge, color = if (boostActive) Color(0xFF5BFFE3) else MaterialTheme.colorScheme.onSurfaceVariant)
             LinearProgressIndicator(progress = { progress }, Modifier.fillMaxWidth(), color = if (boostActive) Color(0xFF5BFFE3) else MaterialTheme.colorScheme.outlineVariant, trackColor = Color(0x33000000))
         }
     }

@@ -99,6 +99,13 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    // Additional UI & asset runtimes
+    implementation("app.rive:rive-android:9.6.5")
+    implementation("androidx.startup:startup-runtime:1.2.0")
+    implementation("com.airbnb.android:lottie-compose:6.7.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.5")
     implementation("androidx.constraintlayout:constraintlayout-compose:1.0.1")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.google.android.material:material:1.12.0")

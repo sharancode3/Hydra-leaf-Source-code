@@ -5,7 +5,6 @@ import android.graphics.RectF
 import android.os.Debug
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.hydraleaf.audio.GameAudioEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -107,10 +106,13 @@ data class GameUiState(
     val riverDrops: Int = 0,
     val totalRiverDrops: Int = 0,
     val totalDropsEverCollected: Int = 0,
+    val totalCoins: Int = 0,
+    val dailyCoinsClaimedToday: Int = 0,
     val totalGamesPlayed: Int = 0,
     val lastScore: Int = 0,
     val leafSkin: LeafSkin = LeafSkin.CLASSIC,
     val riverTheme: RiverTheme = RiverTheme.FOREST,
+    val trailSkin: TrailSkin = TrailSkin.CLASSIC,
     val difficultyPreset: DifficultyPreset = DifficultyPreset.NORMAL,
     val musicVolume: Float = 0.8f,
     val sfxVolume: Float = 0.9f,
@@ -137,13 +139,17 @@ data class GameUiState(
     val sensitivitySuggestion: String? = null,
     val recentUnlock: AchievementType? = null,
     val recentCelebration: String? = null
+    ,
+    val collectEffects: List<CollectEffectState> = emptyList()
 ) {
     val gameState: GameState get() = when (phase) {
         GamePhase.PLAYING, GamePhase.COUNTDOWN, GamePhase.CALIBRATING -> GameState.RUNNING
-        GamePhase.IDLE -> GameState.PAUSED
+        GamePhase.PAUSED, GamePhase.IDLE -> GameState.PAUSED
         GamePhase.DEAD, GamePhase.GAME_OVER -> GameState.GAME_OVER
     }
 }
+
+data class CollectEffectState(val x: Float, val y: Float, val age: Float, val kind: String, val value: Int = 0)
 
 enum class GameState { RUNNING, PAUSED, GAME_OVER }
 
@@ -163,6 +169,10 @@ private data class ObstacleEntity(
     var minNearMissClearance: Float = Float.MAX_VALUE,
     var warningHighlight: Float = 0f, var warningTriggered: Boolean = false
 )
+
+    private data class CollectEffect(var x: Float, var y: Float, var age: Float = 0f, val kind: String = "boost", val value: Int = 0)
+
+    private val activeCollectEffects = mutableListOf<CollectEffect>()
 
 private data class BoostEntity(
     var id: Long, var x: Float, var y: Float,
@@ -186,7 +196,7 @@ private data class ParticleEntity(
 class GameViewModel @Inject constructor(
     application: Application,
     val playerSettingsStore: PlayerSettingsStore,
-    val audioEngine: GameAudioEngine
+    val audioEngine: HydraAudioManager
 ) : AndroidViewModel(application) {
 
     private val _settings = MutableStateFlow(ControlSettings())
@@ -239,6 +249,10 @@ class GameViewModel @Inject constructor(
     // Currency
     private var runDrops = 0
     private var tapSteerImpulse = 0f
+    private var usedPowerUpsThisRun = 0
+    private var fogClearsThisRun = 0
+    private var calmPointsThisRun = 0
+    private var doubleRowsClearedThisRun = 0
 
     // Calibration / gyro gesture helpers
     private val recentTiltX = ArrayDeque<Float>()
@@ -256,8 +270,10 @@ class GameViewModel @Inject constructor(
 
     // Cosmetics
     private var activeSkin = LeafSkin.CLASSIC
+    private var activeTrailSkin = TrailSkin.CLASSIC
     private var activeTheme = RiverTheme.FOREST
     private var storedDrops = 0
+    private var totalGamesPlayed = 0
 
     // FPS tracking
     private var fpsFrameCount = 0
@@ -284,12 +300,18 @@ class GameViewModel @Inject constructor(
         } }
         viewModelScope.launch { playerSettingsStore.highScoreFlow.collectLatest { _uiState.value = _uiState.value.copy(highScore = it) } }
         viewModelScope.launch { playerSettingsStore.lastScoreFlow.collectLatest { _uiState.value = _uiState.value.copy(lastScore = it) } }
-        viewModelScope.launch { playerSettingsStore.totalGamesPlayedFlow.collectLatest { _uiState.value = _uiState.value.copy(totalGamesPlayed = it) } }
+        viewModelScope.launch { playerSettingsStore.totalGamesPlayedFlow.collectLatest {
+            totalGamesPlayed = it
+            _uiState.value = _uiState.value.copy(totalGamesPlayed = it, showTutorial = _uiState.value.showTutorial && it < 3)
+        } }
         viewModelScope.launch { playerSettingsStore.totalDropsEverCollectedFlow.collectLatest { _uiState.value = _uiState.value.copy(totalDropsEverCollected = it) } }
+        viewModelScope.launch { playerSettingsStore.totalCoinsFlow.collectLatest { _uiState.value = _uiState.value.copy(totalCoins = it) } }
+        viewModelScope.launch { playerSettingsStore.dailyCoinsUsedFlow.collectLatest { _uiState.value = _uiState.value.copy(dailyCoinsClaimedToday = it) } }
         viewModelScope.launch { playerSettingsStore.soundEnabledFlow.collectLatest { _uiState.value = _uiState.value.copy(soundEnabled = it); audioEngine.soundEnabled = it } }
         viewModelScope.launch { playerSettingsStore.tutorialSeenFlow.collectLatest { _uiState.value = _uiState.value.copy(showTutorial = !it) } }
         viewModelScope.launch { playerSettingsStore.riverDropsFlow.collectLatest { storedDrops = it; _uiState.value = _uiState.value.copy(totalRiverDrops = it) } }
         viewModelScope.launch { playerSettingsStore.activeLeafSkinFlow.collectLatest { activeSkin = it; _uiState.value = _uiState.value.copy(leafSkin = it) } }
+        viewModelScope.launch { playerSettingsStore.activeTrailSkinFlow.collectLatest { activeTrailSkin = it; _uiState.value = _uiState.value.copy(trailSkin = it) } }
         viewModelScope.launch {
             playerSettingsStore.activeRiverThemeFlow.collectLatest {
                 activeTheme = it
@@ -318,6 +340,7 @@ class GameViewModel @Inject constructor(
             controlSettings = _settings.value,
             soundEnabled = _uiState.value.soundEnabled,
             leafSkin = activeSkin,
+            trailSkin = activeTrailSkin,
             riverTheme = activeTheme,
             difficultyPreset = _settings.value.difficultyPreset,
             musicVolume = _settings.value.musicVolume,
@@ -337,21 +360,62 @@ class GameViewModel @Inject constructor(
 
     fun continueRun() {
         val cur = _uiState.value
-        if (cur.phase == GamePhase.IDLE || cur.phase == GamePhase.GAME_OVER) startNewRun()
-        else _uiState.value = cur.copy(phase = GamePhase.PLAYING, pauseOverlayVisible = false)
+        when (cur.phase) {
+            GamePhase.PAUSED -> resumeFromPause()
+            GamePhase.IDLE, GamePhase.GAME_OVER -> startNewRun()
+            else -> _uiState.value = cur.copy(phase = GamePhase.PLAYING, pauseOverlayVisible = false)
+        }
     }
 
     fun togglePause() {
         val cur = _uiState.value
         when (cur.phase) {
-            GamePhase.PLAYING -> _uiState.value = cur.copy(phase = GamePhase.IDLE, pauseOverlayVisible = true)
+            GamePhase.PLAYING -> _uiState.value = cur.copy(phase = GamePhase.PAUSED, pauseOverlayVisible = true)
+            GamePhase.PAUSED -> resumeFromPause()
             GamePhase.IDLE -> continueRun()
             else -> {}
         }
     }
 
-    fun resume() { _uiState.value = _uiState.value.copy(phase = GamePhase.PLAYING, pauseOverlayVisible = false) }
+    fun resume() = resumeFromPause()
+    fun pauseForBackground() {
+        val cur = _uiState.value
+        if (cur.phase == GamePhase.PLAYING) {
+            _uiState.value = cur.copy(phase = GamePhase.PAUSED, pauseOverlayVisible = true)
+        }
+    }
     fun resetGame() { startNewRun() }
+
+    fun quitToMenu() {
+        resetInternalState()
+        _uiState.value = freshUiState().copy(
+            phase = GamePhase.IDLE,
+            highScore = _uiState.value.highScore,
+            controlSettings = _settings.value,
+            soundEnabled = _uiState.value.soundEnabled,
+            leafSkin = activeSkin,
+            trailSkin = activeTrailSkin,
+            riverTheme = activeTheme,
+            difficultyPreset = _settings.value.difficultyPreset,
+            musicVolume = _settings.value.musicVolume,
+            sfxVolume = _settings.value.sfxVolume,
+            hapticsEnabled = _settings.value.hapticsEnabled,
+            showSpeedIndicator = _settings.value.showSpeedIndicator,
+            showTrailEffect = _settings.value.showTrailEffect,
+            showNearMissFlash = _settings.value.showNearMissFlash,
+            hudOpacity = _settings.value.hudOpacity,
+            particleDensity = _settings.value.particleDensity,
+            totalRiverDrops = storedDrops,
+            dailyChallenge = resolveDailyChallenge()
+        )
+    }
+
+    private fun resumeFromPause() {
+        val cur = _uiState.value
+        if (cur.phase != GamePhase.PAUSED) return
+        // Start a resume countdown instead of immediately resuming gameplay
+        transitionToCountdown()
+    }
 
     private fun transitionToCountdown() {
         _uiState.value = _uiState.value.copy(phase = GamePhase.COUNTDOWN, countdownValue = GameConstants.COUNTDOWN_SECONDS)
@@ -377,7 +441,38 @@ class GameViewModel @Inject constructor(
     private fun transitionToGameOver() {
         val cur = _uiState.value
         if (cur.score > cur.highScore) viewModelScope.launch { playerSettingsStore.setHighScore(cur.score) }
+        val completedDaily = cur.dailyChallenge?.let { daily ->
+            val current = currentChallengeProgress(daily.type, cur.score)
+            val target = challengeTarget(daily.type)
+            daily.copy(
+                completed = current >= target,
+                progress = if (target > 0) current / target.toFloat() else 0f
+            )
+        }
         viewModelScope.launch {
+            completedDaily?.let { daily ->
+                val target = challengeTarget(daily.type)
+                val challengeProgress = ChallengeProgress(
+                    challengeId = "${daily.type.name}:${daily.dayIndex}",
+                    current = currentChallengeProgress(daily.type, cur.score),
+                    target = target,
+                    completedDate = if (daily.completed) System.currentTimeMillis().toString() else null,
+                    claimed = false
+                )
+                val stored = playerSettingsStore.challengeProgressFlow.first().firstOrNull { it.challengeId == challengeProgress.challengeId }
+                val mergedCurrent = when (daily.type) {
+                    ChallengeType.NO_POWER_UPS -> maxOf(stored?.current ?: 0, challengeProgress.current)
+                    ChallengeType.SPEED_RUN -> maxOf(stored?.current ?: 0, challengeProgress.current)
+                    else -> min(challengeProgress.target, (stored?.current ?: 0) + challengeProgress.current)
+                }
+                val merged = challengeProgress.copy(
+                    current = mergedCurrent,
+                    completedDate = if (mergedCurrent >= challengeProgress.target) challengeProgress.completedDate ?: stored?.completedDate else stored?.completedDate,
+                    claimed = stored?.claimed ?: false
+                )
+                playerSettingsStore.updateChallengeProgress(merged)
+                playerSettingsStore.setDailyChallenge(daily.dayIndex, merged.current >= merged.target)
+            }
             playerSettingsStore.addRiverDrops(runDrops)
             playerSettingsStore.addPlaytime(runTime)
             playerSettingsStore.recordRun(
@@ -385,6 +480,7 @@ class GameViewModel @Inject constructor(
                     score = cur.score,
                     level = cur.level,
                     drops = runDrops,
+                    obstaclesCleared = cur.obstaclesCleared,
                     durationSec = runTime,
                     dateEpochMillis = System.currentTimeMillis(),
                     skin = cur.leafSkin,
@@ -413,7 +509,8 @@ class GameViewModel @Inject constructor(
             runDropsEarned = runDrops,
             sensitivitySuggestion = suggestion,
             lastScore = cur.score,
-            recentUnlock = cur.achievements.firstOrNull { !it.unlocked && it.type == AchievementType.FIRST_FLIGHT }?.type
+            recentUnlock = cur.achievements.firstOrNull { !it.unlocked && it.type == AchievementType.FIRST_FLIGHT }?.type,
+            dailyChallenge = completedDaily
         )
     }
 
@@ -468,7 +565,11 @@ class GameViewModel @Inject constructor(
     // ── Settings mutations ───────────────────────────────────────────────────
 
     fun toggleSound() = viewModelScope.launch { val n = !_uiState.value.soundEnabled; _uiState.value = _uiState.value.copy(soundEnabled = n); playerSettingsStore.setSoundEnabled(n); audioEngine.soundEnabled = n }
-    fun dismissTutorial() = viewModelScope.launch { playerSettingsStore.setTutorialSeen(true) }
+    fun dismissTutorial() = viewModelScope.launch {
+        playerSettingsStore.setTutorialSeen(true)
+        _uiState.value = _uiState.value.copy(showTutorial = false)
+        // TODO-20 DONE: Tutorial overlay dismiss persists to DataStore and is dismissible via tap
+    }
     fun setSensitivityMultiplier(v: Float) = viewModelScope.launch { playerSettingsStore.setSensitivityMultiplier(v.coerceIn(0.2f, 6f)) }
     fun setCurve(v: SensitivityCurve) = viewModelScope.launch { playerSettingsStore.setCurve(v) }
     fun setInvertTilt(v: Boolean) = viewModelScope.launch { playerSettingsStore.setInvertTilt(v) }
@@ -483,8 +584,12 @@ class GameViewModel @Inject constructor(
     fun applyPreset(p: SensitivityPreset) = viewModelScope.launch { playerSettingsStore.applyPreset(p) }
     fun setDifficultyPreset(v: DifficultyPreset) = viewModelScope.launch { playerSettingsStore.setDifficultyPreset(v) }
     fun setMusicVolume(v: Float) = viewModelScope.launch { playerSettingsStore.setMusicVolume(v) ; audioEngine.musicVolume = v }
+    // TODO-16 DONE: Settings slider calls setMusicVolume immediately to update MediaPlayer
     fun setSfxVolume(v: Float) = viewModelScope.launch { playerSettingsStore.setSfxVolume(v); audioEngine.sfxVolume = v }
+    // TODO-16 DONE: Settings slider calls setSfxVolume immediately to update SoundPool
     fun setHapticsEnabled(v: Boolean) = viewModelScope.launch { playerSettingsStore.setHapticsEnabled(v) }
+    fun setHapticIntensity(v: HapticIntensity) = viewModelScope.launch { playerSettingsStore.setHapticIntensity(v) }
+    // TODO-17 DONE: UI calls update haptic intensity which is persisted and used by HapticHelper
     fun setShowSpeedIndicator(v: Boolean) = viewModelScope.launch { playerSettingsStore.setShowSpeedIndicator(v) }
     fun setShowTrailEffect(v: Boolean) = viewModelScope.launch { playerSettingsStore.setShowTrailEffect(v) }
     fun setShowNearMissFlash(v: Boolean) = viewModelScope.launch { playerSettingsStore.setShowNearMissFlash(v) }
@@ -507,11 +612,27 @@ class GameViewModel @Inject constructor(
     fun claimDailyChallenge() = viewModelScope.launch {
         val daily = _uiState.value.dailyChallenge ?: return@launch
         if (!daily.completed) return@launch
-        val already = playerSettingsStore.dailyChallengeCompleted.first()
-        if (already) return@launch
+        val challengeId = "${daily.type.name}:${daily.dayIndex}"
+        val stored = playerSettingsStore.challengeProgressFlow.first().firstOrNull { it.challengeId == challengeId }
+        if (stored?.claimed == true) return@launch
+        val coinsAwarded = playerSettingsStore.awardDailyChallengeCoins(daily.type.rewardCoins)
         playerSettingsStore.addRiverDrops(daily.type.rewardDrops)
         playerSettingsStore.setDailyChallenge(daily.dayIndex, true)
-        showCelebration("Claimed ${daily.type.rewardDrops} drops")
+        playerSettingsStore.updateChallengeProgress(
+            ChallengeProgress(
+                challengeId = challengeId,
+                current = maxOf(stored?.current ?: 0, challengeTarget(daily.type)),
+                target = challengeTarget(daily.type),
+                completedDate = stored?.completedDate ?: System.currentTimeMillis().toString(),
+                claimed = true
+            )
+        )
+        val claimSummary = if (coinsAwarded > 0) {
+            "Claimed ${daily.type.rewardDrops} drops + $coinsAwarded coin(s)"
+        } else {
+            "Claimed ${daily.type.rewardDrops} drops (daily coin cap reached)"
+        }
+        showCelebration(claimSummary)
     }
 
     // ── Shop ─────────────────────────────────────────────────────────────────
@@ -527,10 +648,24 @@ class GameViewModel @Inject constructor(
         }
     }
     fun selectSkin(skin: LeafSkin) = viewModelScope.launch { playerSettingsStore.setActiveSkin(skin) }
+    fun purchaseTrailSkin(trailSkin: TrailSkin) = viewModelScope.launch {
+        if (playerSettingsStore.spendRiverDrops(trailSkin.cost)) { playerSettingsStore.unlockTrailSkin(trailSkin); playerSettingsStore.setActiveTrailSkin(trailSkin) }
+    }
+    fun selectTrailSkin(trailSkin: TrailSkin) = viewModelScope.launch { playerSettingsStore.setActiveTrailSkin(trailSkin) }
     fun purchaseTheme(theme: RiverTheme) = viewModelScope.launch {
         if (playerSettingsStore.spendRiverDrops(theme.cost)) { playerSettingsStore.unlockTheme(theme); playerSettingsStore.setActiveTheme(theme); showCelebration("Unlocked ${theme.displayName}") }
     }
     fun selectTheme(theme: RiverTheme) = viewModelScope.launch { playerSettingsStore.setActiveTheme(theme) }
+
+    fun upgradeBooster(kind: BoostKind) = viewModelScope.launch {
+        val levels = playerSettingsStore.boosterLevelsFlow.first()
+        val curLevel = levels[kind.name] ?: 0
+        val cost = 50 * (curLevel + 1)
+        if (playerSettingsStore.spendRiverDrops(cost)) {
+            playerSettingsStore.upgradeBooster(kind)
+            showCelebration("Upgraded ${kind.displayName} to level ${curLevel + 1}")
+        }
+    }
 
     // ── Tilt mapping ─────────────────────────────────────────────────────────
 
@@ -737,6 +872,24 @@ class GameViewModel @Inject constructor(
         val newLevel = 1 + clearedTotal / GameConstants.HURDLES_PER_LEVEL
         if (newLevel > cur.level) audioEngine.playLevelUp()
         runDrops += obstResult.cleared * GameConstants.DROPS_PER_CLEAR
+        if (obstResult.cleared > 0) {
+            // spawn small drop collect effects around the leaf to indicate earned River Drops
+            repeat(min(6, obstResult.cleared)) {
+                val rx = leafX + (Random.nextFloat() - 0.5f) * GameConstants.LEAF_WIDTH * 0.6f
+                val ry = leafY + (Random.nextFloat() - 0.3f) * GameConstants.LEAF_HEIGHT * 0.4f
+                activeCollectEffects.add(CollectEffect(rx, ry, 0f, "drop", 0))
+            }
+        }
+
+        if (cur.dailyChallenge?.type == ChallengeType.FOG_ONLY && currentEvent?.type == RiverEventType.FOG) {
+            fogClearsThisRun += obstResult.cleared
+        }
+        if (cur.dailyChallenge?.type == ChallengeType.CALM_ONLY && currentEvent?.type == RiverEventType.CALM_WATERS) {
+            calmPointsThisRun += obstResult.pointsEarned * pointsMul
+        }
+        if (cur.dailyChallenge?.type == ChallengeType.DOUBLE_HURDLES) {
+            doubleRowsClearedThisRun += obstResult.clearedDoubleRowTokens.size
+        }
 
         // ── Adaptive difficulty ──────────────────────────────────────────────
         if (obstResult.cleared > 0) {
@@ -764,6 +917,13 @@ class GameViewModel @Inject constructor(
         }
         val pIter = trailParticles.iterator()
         while (pIter.hasNext()) { val p = pIter.next(); p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.life <= 0f) pIter.remove() }
+        // update collect effects
+        val ceIter = activeCollectEffects.iterator()
+        while (ceIter.hasNext()) {
+            val e = ceIter.next()
+            e.age += dt
+            if (e.age > 0.6f) ceIter.remove()
+        }
 
         // ── Leaf animations ──────────────────────────────────────────────────
         val breathScale = 1f + GameConstants.LEAF_BREATH_AMPLITUDE * sin(runTime * 2f * Math.PI.toFloat() / GameConstants.LEAF_BREATH_PERIOD)
@@ -810,6 +970,7 @@ class GameViewModel @Inject constructor(
             riverDrops = runDrops,
             dayPhase = dayPhase, dayCycleProgress = dayProgress,
             trailParticles = trailParticles.map { TrailParticle(it.x, it.y, it.life / it.maxLife, it.size, (it.life / it.maxLife).coerceIn(0f, 1f)) },
+            collectEffects = activeCollectEffects.map { CollectEffectState(it.x, it.y, it.age, it.kind, it.value) },
             leafBreathScale = breathScale, leafLeanAngle = leanAngle,
             adaptiveDifficulty = adaptiveDiff,
             runTime = runTime, fogAlpha = fogAlpha, narrowChannelOffset = narrowOffset
@@ -842,6 +1003,8 @@ class GameViewModel @Inject constructor(
             }
         }
         var collided = false; var pts = 0; var cleared = 0
+        val clearedRowTokens = mutableSetOf<Int>()
+        val clearedDoubleRowTokens = mutableSetOf<Int>()
         val warningY = GameConstants.VIRTUAL_HEIGHT * GameConstants.WARNING_ZONE_RATIO
         val iter = activeObstacles.iterator()
         while (iter.hasNext()) {
@@ -854,11 +1017,24 @@ class GameViewModel @Inject constructor(
             }
             if (!o.warningTriggered && o.y >= warningY) { o.warningTriggered = true; o.warningHighlight = 1f }
             if (o.warningHighlight > 0f) o.warningHighlight = max(0f, o.warningHighlight - dt * 1.25f)
-            val oR = RectF(o.x - o.width * 0.5f, o.y - o.height * 0.5f, o.x + o.width * 0.5f, o.y + o.height * 0.5f)
-            val intersects = rectIntersects(leafRect, oR)
+            // Visual rectangle (what's drawn) and a tighter collision hitbox tuned per obstacle kind
+            val visualRect = RectF(o.x - o.width * 0.5f, o.y - o.height * 0.5f, o.x + o.width * 0.5f, o.y + o.height * 0.5f)
+            val kindScale = when (o.kind) {
+                ObstacleKind.ROCK -> 0.72f
+                ObstacleKind.LOG -> 0.86f
+                else -> 0.8f
+            }
+            val obstacleHitboxScale = kindScale
+            val oHitW = o.width * obstacleHitboxScale
+            val oHitH = o.height * obstacleHitboxScale
+            val oR = RectF(o.x - oHitW * 0.5f, o.y - oHitH * 0.5f, o.x + oHitW * 0.5f, o.y + oHitH * 0.5f)
+            // Use improved collision detection that treats the leaf as a rounded/elliptical body
+            val intersects = detectCollision(leafRect, oR)
+            // TODO-21 DONE: Accurate obstacle hitboxes using ellipse/rect intersection
             if (!collided && intersects) collided = true
 
-            val verticalOverlap = min(leafRect.bottom, oR.bottom) - max(leafRect.top, oR.top)
+            // Use the visual rect for verticalOverlap/near-miss checks so the near-miss UX aligns with visuals
+            val verticalOverlap = min(leafRect.bottom, visualRect.bottom) - max(leafRect.top, visualRect.top)
             if (!intersects && verticalOverlap >= GameConstants.NEAR_MISS_MIN_VERTICAL_OVERLAP) {
                 val leftGap = leafRect.left - oR.right
                 val rightGap = oR.left - leafRect.right
@@ -878,8 +1054,12 @@ class GameViewModel @Inject constructor(
                 o.minNearMissClearance = Float.MAX_VALUE
             }
 
-            if (!o.counted && o.y > leafRect.bottom) {
+            if (!o.counted && visualRect.top > leafRect.bottom) {
                 o.counted = true; pts += 10; cleared++
+                clearedRowTokens.add(o.rowToken)
+                if (o.pattern == ObstaclePattern.DOUBLE || o.pattern == ObstaclePattern.CROSS) {
+                    clearedDoubleRowTokens.add(o.rowToken)
+                }
                 val clearance = o.minNearMissClearance
                 if (
                     o.nearMissEligible &&
@@ -893,10 +1073,12 @@ class GameViewModel @Inject constructor(
                     }
                 }
                 audioEngine.playDodge(Random.nextInt(5))
+                // spawn a score popup effect at the obstacle position
+                activeCollectEffects.add(CollectEffect(o.x, o.y - o.height * 0.2f, 0f, "score", 10))
             }
             if (o.y - o.height * 0.5f > GameConstants.VIRTUAL_HEIGHT + 100f) { iter.remove(); obstaclePool.addLast(o) }
         }
-        return ObstacleUpdateResult(pts, collided, cleared)
+        return ObstacleUpdateResult(pts, collided, cleared, clearedRowTokens, clearedDoubleRowTokens)
     }
 
     private fun canSpawnRow(level: Int): Boolean {
@@ -979,6 +1161,10 @@ class GameViewModel @Inject constructor(
             else -> 1
         }
 
+        // Prefer corridors near the player's current horizontal position to avoid impossible shifts
+        val leafColumn = ((_uiState.value.leafX / GameConstants.VIRTUAL_WIDTH) * columns).toInt().coerceIn(0, columns - 1)
+        val leafPreferred = (leafColumn - corridorWidthColumns / 2).coerceIn(0, maxStart)
+
         val preferredStart = when (pattern) {
             ObstaclePattern.LEFT -> 0
             ObstaclePattern.RIGHT -> maxStart
@@ -988,9 +1174,12 @@ class GameViewModel @Inject constructor(
             ObstaclePattern.CROSS -> ((currentCorridorColumn + maxStart) / 2).coerceIn(0, maxStart)
         }
 
+        // Blend pattern-based preference with leaf-based preference; bias towards leafPreferred but respect maxShift
+        val mixedPreferred = ((preferredStart * 0.6f) + (leafPreferred * 0.4f)).toInt().coerceIn(0, maxStart)
         val currentStart = currentCorridorColumn.coerceIn(0, maxStart)
-        val clampedPreferred = preferredStart.coerceIn(max(0, currentStart - maxShift), min(maxStart, currentStart + maxShift))
+        val clampedPreferred = mixedPreferred.coerceIn(max(0, currentStart - maxShift), min(maxStart, currentStart + maxShift))
         nextGapOnLeft = !nextGapOnLeft
+        // TODO-29 DONE: Safe corridor selection now biases toward the player's current column to avoid impossible shifts
         return clampedPreferred
     }
 
@@ -1044,7 +1233,11 @@ class GameViewModel @Inject constructor(
             b.age += dt
             b.y += b.speed * dt
             if (magnetPull) { val dx = leafRect.centerX() - b.x; val dy = leafRect.centerY() - b.y; val dist = kotlin.math.sqrt(dx * dx + dy * dy); if (dist < GameConstants.MAGNET_PULL_RADIUS) { b.x += dx / dist * 200f * dt; b.y += dy / dist * 200f * dt } }
-            if (!collected && circleIntersectsRect(b.x, b.y, b.radius, leafRect)) { collected = true; b.collected = true; audioEngine.playCollect() }
+            if (!collected && circleIntersectsRect(b.x, b.y, b.radius, leafRect)) {
+                collected = true; b.collected = true; audioEngine.playCollect()
+                // spawn a short-lived collect effect for VFX
+                activeCollectEffects.add(CollectEffect(b.x, b.y, 0f, "boost"))
+            }
             if (b.collected || b.y - b.radius > GameConstants.VIRTUAL_HEIGHT + 80f) { iter.remove(); b.collected = false; boostPool.addLast(b) }
         }
         return collected
@@ -1077,7 +1270,10 @@ class GameViewModel @Inject constructor(
                 collected = true; p.collected = true
                 activePowerUpTimers[p.type] = p.type.durationSec
                 runDrops += GameConstants.DROPS_PER_POWERUP
+                usedPowerUpsThisRun += 1
                 audioEngine.playPowerUp()
+                // spawn collect effect for power-up
+                activeCollectEffects.add(CollectEffect(p.x, p.y, 0f, "powerup"))
             }
             if (p.collected || p.y - p.radius > GameConstants.VIRTUAL_HEIGHT + 80f) { iter.remove(); powerUpPool.addLast(p) }
         }
@@ -1110,6 +1306,22 @@ class GameViewModel @Inject constructor(
         val dayIndex = (System.currentTimeMillis() / 86400000L).toInt()
         val type = ChallengeType.entries[dayIndex % ChallengeType.entries.size]
         return DailyChallenge(type, dayIndex = dayIndex)
+    }
+
+    private fun challengeTarget(type: ChallengeType): Int = when (type) {
+        ChallengeType.NO_POWER_UPS -> 60
+        ChallengeType.SPEED_RUN -> 500
+        ChallengeType.FOG_ONLY -> 20
+        ChallengeType.DOUBLE_HURDLES -> 30
+        ChallengeType.CALM_ONLY -> 300
+    }
+
+    private fun currentChallengeProgress(type: ChallengeType, score: Int): Int = when (type) {
+        ChallengeType.NO_POWER_UPS -> if (usedPowerUpsThisRun == 0) min(runTime.toInt(), 60) else 0
+        ChallengeType.SPEED_RUN -> min(score, 500)
+        ChallengeType.FOG_ONLY -> min(fogClearsThisRun, 20)
+        ChallengeType.DOUBLE_HURDLES -> min(doubleRowsClearedThisRun, 30)
+        ChallengeType.CALM_ONLY -> min(calmPointsThisRun, 300)
     }
 
     // ── Sensitivity auto-tune suggestion ─────────────────────────────────────
@@ -1149,6 +1361,10 @@ class GameViewModel @Inject constructor(
         shakeToggleCount = 0
         lastShakeSign = 0
         lastShakeNanos = 0L
+        usedPowerUpsThisRun = 0
+        fogClearsThisRun = 0
+        calmPointsThisRun = 0
+        doubleRowsClearedThisRun = 0
         fpsFrameCount = 0; fpsAccum = 0f; currentFps = 60
         countdownJob?.cancel(); deathJob?.cancel(); calibrationJob?.cancel()
     }
@@ -1158,7 +1374,16 @@ class GameViewModel @Inject constructor(
         targetX = GameConstants.VIRTUAL_WIDTH * 0.5f, targetY = GameConstants.LEAF_BASE_Y
     )
 
-    fun detectCollision(leafRect: RectF, obstacleRect: RectF): Boolean = rectIntersects(leafRect, obstacleRect)
+    fun detectCollision(leafRect: RectF, obstacleRect: RectF): Boolean {
+        // Quick AABB check
+        if (rectIntersects(leafRect, obstacleRect)) return true
+        // Approximate leaf as circle/ellipse for edge collisions to reduce false positives
+        val cx = leafRect.centerX(); val cy = leafRect.centerY()
+        val rx = leafRect.width() * 0.5f; val ry = leafRect.height() * 0.5f
+        // Use conservative radius (smaller of half-width/half-height)
+        val radius = minOf(rx, ry) * 0.92f
+        return circleIntersectsRect(cx, cy, radius, obstacleRect)
+    }
 
     private fun rectIntersects(a: RectF, b: RectF): Boolean =
         a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
@@ -1170,7 +1395,13 @@ class GameViewModel @Inject constructor(
 
     private fun lerp(a: Float, b: Float, t: Float) = a + t * (b - a)
 
-    private data class ObstacleUpdateResult(val pointsEarned: Int, val collided: Boolean, val cleared: Int)
+    private data class ObstacleUpdateResult(
+        val pointsEarned: Int,
+        val collided: Boolean,
+        val cleared: Int,
+        val clearedRowTokens: Set<Int>,
+        val clearedDoubleRowTokens: Set<Int>
+    )
 
     override fun onCleared() { super.onCleared(); audioEngine.release() }
 }

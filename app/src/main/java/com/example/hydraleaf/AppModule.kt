@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
-import com.example.hydraleaf.audio.GameAudioEngine
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -26,5 +25,5 @@ object AppModule {
         PlayerSettingsStore(dataStore)
 
     @Provides @Singleton
-    fun provideGameAudioEngine(@ApplicationContext context: Context): GameAudioEngine = GameAudioEngine(context)
+    fun provideHydraAudioManager(@ApplicationContext context: Context): HydraAudioManager = HydraAudioManager(context)
 }

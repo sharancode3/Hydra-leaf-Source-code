@@ -121,7 +121,10 @@ object GameConstants {
 
     // ── Light rays ──────────────────────────────────────────────────────────
     const val LIGHT_RAY_COUNT    = 6
+        // Toggle for procedural light-ray decoration (disable to remove dark stripes)
+        const val LIGHT_RAYS_ENABLED = false
     const val LIGHT_RAY_MAX_ALPHA = 0.12f
+    // TODO-19 DONE: Procedural light-ray stripes disabled by default (LIGHT_RAYS_ENABLED = false)
 
     // ── Adaptive difficulty ─────────────────────────────────────────────────
     const val ADAPTIVE_WINDOW       = 15       // last N obstacles for dodge rate
