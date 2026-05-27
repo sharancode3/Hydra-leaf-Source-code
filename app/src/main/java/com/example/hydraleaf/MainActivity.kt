@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf
+package com.example.hydraleaf
 
 import android.content.pm.ActivityInfo
 import android.os.Bundle
@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.example.hydraleaf.ui.HydraLeafTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -28,7 +30,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            HydraLeafTheme {
+            val uiState by gameViewModel.uiState.collectAsState()
+            HydraLeafTheme(theme = uiState.controlSettings.appTheme) {
                 HydraLeafApp(viewModel = gameViewModel)
             }
         }

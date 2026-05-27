@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -92,16 +93,22 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
-// Offset already imported earlier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.platform.LocalContext
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -116,6 +123,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.hydraleaf.ui.AppColors
+import android.widget.Toast
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
+import kotlin.random.Random
+import kotlinx.coroutines.launch
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.graphics.drawscope.withTransform
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 
@@ -166,29 +193,101 @@ fun HydraLeafApp(viewModel: GameViewModel) {
                         onBackToMenu = { launchSettings = false; destination = HydraLeafDestination.HOME }
                     )
 
-                    HydraLeafDestination.SHOP -> ShopScreen(viewModel) { destination = HydraLeafDestination.HOME }
-                    HydraLeafDestination.CHALLENGES -> ChallengesScreen(viewModel, uiState) { destination = HydraLeafDestination.HOME }
-                    HydraLeafDestination.LEADERBOARD -> LeaderboardScreen(uiState) { destination = HydraLeafDestination.HOME }
-                    HydraLeafDestination.SETTINGS -> SettingsScreen(
-                        settings = uiState.controlSettings,
-                        onDifficultyChanged = { viewModel.setDifficultyPreset(it) },
-                        onMusicVolumeChanged = { viewModel.setMusicVolume(it) },
-                        onSfxVolumeChanged = { viewModel.setSfxVolume(it) },
-                        onHapticsChanged = { viewModel.setHapticsEnabled(it) },
-                        onHapticIntensityChanged = { viewModel.setHapticIntensity(it) },
-                        onShowSpeedIndicatorChanged = { viewModel.setShowSpeedIndicator(it) },
-                        onShowTrailEffectChanged = { viewModel.setShowTrailEffect(it) },
-                        onShowNearMissFlashChanged = { viewModel.setShowNearMissFlash(it) },
-                        onHudOpacityChanged = { viewModel.setHudOpacity(it) },
-                        onParticleDensityChanged = { viewModel.setParticleDensity(it) },
-                        onOpenGameInfo = { destination = HydraLeafDestination.GAME_INFO },
-                        onClose = { destination = HydraLeafDestination.HOME }
-                    )
+                    HydraLeafDestination.SHOP -> LazyScreen(uiState.controlSettings.appTheme) {
+                        ShopScreen(viewModel) { destination = HydraLeafDestination.HOME }
+                    }
+                    HydraLeafDestination.CHALLENGES -> LazyScreen(uiState.controlSettings.appTheme) {
+                        ChallengesScreen(viewModel, uiState, onBack = { destination = HydraLeafDestination.HOME }, onStartRun = { destination = HydraLeafDestination.GAME })
+                    }
+                    HydraLeafDestination.LEADERBOARD -> LazyScreen(uiState.controlSettings.appTheme) {
+                        LeaderboardScreen(uiState) { destination = HydraLeafDestination.HOME }
+                    }
+                    HydraLeafDestination.SETTINGS -> LazyScreen(uiState.controlSettings.appTheme) {
+                        SettingsScreen(
+                            settings = uiState.controlSettings,
+                            onAppThemeChanged = { viewModel.setAppTheme(it) },
+                            onDifficultyChanged = { viewModel.setDifficultyPreset(it) },
+                            onMusicVolumeChanged = { viewModel.setMusicVolume(it) },
+                            onSfxVolumeChanged = { viewModel.setSfxVolume(it) },
+                            onHapticsChanged = { viewModel.setHapticsEnabled(it) },
+                            onHapticIntensityChanged = { viewModel.setHapticIntensity(it) },
+                            onShowSpeedIndicatorChanged = { viewModel.setShowSpeedIndicator(it) },
+                            onShowTrailEffectChanged = { viewModel.setShowTrailEffect(it) },
+                            onTrailDensityChanged = { viewModel.setTrailDensity(it) },
+                            onShowNearMissFlashChanged = { viewModel.setShowNearMissFlash(it) },
+                            onHudOpacityChanged = { viewModel.setHudOpacity(it) },
+                            onParticleDensityChanged = { viewModel.setParticleDensity(it) },
+                            onOpenGameInfo = { destination = HydraLeafDestination.GAME_INFO },
+                            onClose = { destination = HydraLeafDestination.HOME }
+                        )
+                    }
 
-                    HydraLeafDestination.GAME_INFO -> GameInfoScreen(onBack = { destination = HydraLeafDestination.HOME })
+                    HydraLeafDestination.GAME_INFO -> GameInfoScreen(
+                        appTheme = uiState.controlSettings.appTheme,
+                        onBack = { destination = HydraLeafDestination.HOME }
+                    )
                 }
 
             }
+        }
+    }
+}
+
+@Composable
+private fun LazyScreen(
+    appTheme: AppTheme,
+    content: @Composable () -> Unit
+) {
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(600)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AppColors.backgroundDark),
+            contentAlignment = Alignment.Center
+        ) {
+            val infiniteTransition = rememberInfiniteTransition(label = "lazy_spinner")
+            val rotation by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1200, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "rotation"
+            )
+
+            Canvas(modifier = Modifier.size(64.dp)) {
+                val sizePx = size.minDimension
+                val strokeWidth = 8f
+                val color = AppColors.primaryGreen
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        colors = listOf(color.copy(alpha = 0.1f), color),
+                        center = center
+                    ),
+                    startAngle = rotation,
+                    sweepAngle = 280f,
+                    useCenter = false,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                )
+            }
+        }
+    } else {
+        AnimatedContent(
+            targetState = true,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(400)) togetherWith fadeOut(animationSpec = tween(400))
+            },
+            label = "lazy_content"
+        ) {
+            content()
         }
     }
 }
@@ -222,18 +321,16 @@ private fun HomeScreen(
         label = "shimmerOffset"
     )
 
+    val homeBgColors = when (uiState.controlSettings.appTheme) {
+        AppTheme.DARK -> listOf(AppColors.backgroundDark, Color(0xFF0A2620), Color(0xFF081612))
+        AppTheme.LIGHT -> listOf(AppColors.backgroundDark, Color(0xFFEAE4D9), Color(0xFFDCD5C8))
+        AppTheme.AURORA -> listOf(AppColors.backgroundDark, Color(0xFF160F45), Color(0xFF0D082B))
+    }
+
     Box(
         Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        AppColors.backgroundDark,
-                        Color(0xFF0A2620),
-                        Color(0xFF081612)
-                    )
-                )
-            )
+            .background(Brush.verticalGradient(homeBgColors))
             .padding(safePadding)
     ) {
         HomeAtmosphereLayer(shimmerOffset)
@@ -335,7 +432,7 @@ private fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        ShopPreview(skinPreviewStyle(uiState.leafSkin), Modifier.size(122.dp))
+                        ShopPreview(skinPreviewStyle(uiState.leafSkin), Modifier.size(40.dp))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Currently equipped", color = AppColors.textMuted, style = MaterialTheme.typography.labelLarge)
                             Text(uiState.leafSkin.displayName, color = AppColors.textPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
@@ -541,7 +638,13 @@ private fun HomeStatSheetContent(
             }
             HomeStatSheet.LEVEL -> {
                 Text("Current level ${uiState.level}", color = AppColors.primaryGreen, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
-                Text("Next threshold: ${(uiState.level * GameConstants.HURDLES_PER_LEVEL)} cleared hurdles", color = AppColors.textMuted)
+                val hurdlesNeeded = when (uiState.difficultyPreset) {
+                    DifficultyPreset.EASY -> 10
+                    DifficultyPreset.NORMAL -> 8
+                    DifficultyPreset.HARD -> 6
+                    DifficultyPreset.EXTREME -> 4
+                }
+                Text("Next threshold: ${(uiState.level * hurdlesNeeded)} cleared hurdles", color = AppColors.textMuted)
             }
             HomeStatSheet.DROPS -> {
                 Text("${uiState.totalRiverDrops}", color = AppColors.primaryGreen, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
@@ -711,6 +814,72 @@ private fun PersistentBottomNav(
     }
 }
 
+private fun requiredLevelForSkin(skin: LeafSkin): Int = when (skin) {
+    LeafSkin.CLASSIC -> 1
+    LeafSkin.GOLDEN -> 1
+    LeafSkin.FROST -> 2
+    LeafSkin.FIRE -> 2
+    LeafSkin.NEON -> 3
+    LeafSkin.COSMIC -> 3
+    LeafSkin.RAINBOW -> 4
+    LeafSkin.SHADOW -> 4
+    LeafSkin.AURORA -> 5
+    LeafSkin.JADE -> 5
+    LeafSkin.CHERRY_BLOSSOM -> 6
+    LeafSkin.STORM -> 7
+    LeafSkin.GALAXY -> 8
+}
+
+private fun coinCostForSkin(skin: LeafSkin): Int = when (skin) {
+    LeafSkin.COSMIC -> 2
+    LeafSkin.RAINBOW -> 3
+    LeafSkin.SHADOW -> 3
+    LeafSkin.AURORA -> 4
+    LeafSkin.JADE -> 4
+    LeafSkin.CHERRY_BLOSSOM -> 5
+    LeafSkin.STORM -> 5
+    LeafSkin.GALAXY -> 6
+    else -> 0
+}
+
+private fun requiredLevelForTrail(trailSkin: TrailSkin): Int = when (trailSkin) {
+    TrailSkin.CLASSIC -> 1
+    TrailSkin.SPARKLE -> 1
+    TrailSkin.BUBBLE -> 2
+    TrailSkin.FIRE -> 2
+    TrailSkin.ICE_CRYSTALS -> 3
+    TrailSkin.NEON_LINE -> 3
+    TrailSkin.PETALS -> 4
+    TrailSkin.LIGHTNING -> 5
+    TrailSkin.STARDUST -> 6
+}
+
+private fun coinCostForTrail(trailSkin: TrailSkin): Int = when (trailSkin) {
+    TrailSkin.NEON_LINE -> 1
+    TrailSkin.PETALS -> 2
+    TrailSkin.LIGHTNING -> 3
+    TrailSkin.STARDUST -> 4
+    else -> 0
+}
+
+private fun requiredLevelForTheme(theme: RiverTheme): Int = when (theme) {
+    RiverTheme.FOREST -> 1
+    RiverTheme.ARCTIC -> 2
+    RiverTheme.VOLCANIC -> 3
+    RiverTheme.CRYSTAL -> 4
+    RiverTheme.MIDNIGHT -> 5
+}
+
+private fun coinCostForTheme(theme: RiverTheme): Int = when (theme) {
+    RiverTheme.CRYSTAL -> 2
+    RiverTheme.MIDNIGHT -> 3
+    else -> 0
+}
+
+private fun isComingSoonSkin(skin: LeafSkin): Boolean = skin == LeafSkin.GALAXY
+private fun isComingSoonTrail(trail: TrailSkin): Boolean = trail == TrailSkin.STARDUST
+private fun isComingSoonTheme(theme: RiverTheme): Boolean = theme == RiverTheme.MIDNIGHT
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
@@ -720,134 +889,382 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
     val activeTrailSkin by viewModel.playerSettingsStore.activeTrailSkinFlow.collectAsState(initial = TrailSkin.CLASSIC)
     val ownedThemes by viewModel.playerSettingsStore.ownedThemesFlow.collectAsState(initial = setOf(RiverTheme.FOREST.name))
     val drops by viewModel.playerSettingsStore.riverDropsFlow.collectAsState(initial = 0)
+    val playerLevel by viewModel.playerSettingsStore.levelReachedFlow.collectAsState(initial = 1)
+    val playerCoins = uiState.totalCoins
+
+    var activeTab by rememberSaveable { mutableStateOf(0) }
+
     var pendingTitle by remember { mutableStateOf<String?>(null) }
     var pendingPrice by remember { mutableStateOf(0) }
+    var pendingCoinCost by remember { mutableStateOf(0) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
+    val shakingItems = remember { mutableStateMapOf<String, Boolean>() }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Cosmetic Shop", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    Text("\uD83D\uDCA7 $drops", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Column(Modifier.fillMaxSize()) {
+            // Tab Row
+            TabRow(
+                selectedTabIndex = activeTab,
+                containerColor = Color(0xFF0F1A15),
+                contentColor = Color.White,
+                indicator = { tabPositions ->
+                    Box(
+                        Modifier
+                            .tabIndicatorOffset(tabPositions[activeTab])
+                            .height(3.dp)
+                            .background(Color(0xFF39D39B))
+                    )
+                }
+            ) {
+                Tab(selected = activeTab == 0, onClick = { activeTab = 0 }) {
+                    Text("Cosmetic Shop", modifier = Modifier.padding(14.dp), fontWeight = FontWeight.Bold)
+                }
+                Tab(selected = activeTab == 1, onClick = { activeTab = 1 }) {
+                    Text("My Collection", modifier = Modifier.padding(14.dp), fontWeight = FontWeight.Bold)
                 }
             }
 
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Leaf Skins") }
-            items(LeafSkin.entries) { skin ->
-                val owned = ownedSkins.contains(skin.name)
-                val active = uiState.leafSkin == skin
-                ShopTile(
-                    title = skin.displayName,
-                    subtitle = if (active) "Equipped" else if (owned) "Owned" else "${skin.cost} drops",
-                    price = skin.cost,
-                    owned = owned,
-                    active = active,
-                    afford = drops >= skin.cost,
-                    preview = skinPreviewStyle(skin),
-                    onPurchase = {
-                        pendingTitle = skin.displayName
-                        pendingPrice = skin.cost
-                        pendingAction = { viewModel.purchaseSkinWithCelebration(skin) }
-                    },
-                    onSelect = { viewModel.selectSkin(skin) }
-                )
-            }
-
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Trail Skins") }
-            // TODO-06 DONE
-            items(TrailSkin.entries) { trailSkin ->
-                val owned = ownedTrailSkins.contains(trailSkin.name)
-                val active = activeTrailSkin == trailSkin
-                ShopTile(
-                    title = trailSkin.displayName,
-                    subtitle = if (active) "Equipped" else if (owned) "Owned" else "${trailSkin.cost} drops",
-                    price = trailSkin.cost,
-                    owned = owned,
-                    active = active,
-                    afford = drops >= trailSkin.cost,
-                    preview = trailPreviewStyle(trailSkin),
-                    onPurchase = {
-                        pendingTitle = trailSkin.displayName
-                        pendingPrice = trailSkin.cost
-                        pendingAction = { viewModel.purchaseTrailSkin(trailSkin) }
-                    },
-                    onSelect = { viewModel.selectTrailSkin(trailSkin) }
-                )
-            }
-
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Boosters") }
-            // TODO-08 DONE
-            items(BoostKind.values().toList()) { boost ->
-                val boosterLevels by viewModel.playerSettingsStore.boosterLevelsFlow.collectAsState(initial = emptyMap())
-                val curLevel = boosterLevels[boost.name] ?: 0
-                val price = 50 * (curLevel + 1)
-                Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(boost.color).copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                            Text(boost.displayName.take(1), color = Color(boost.color))
+            if (activeTab == 0) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Cosmetic Shop", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                            Spacer(Modifier.weight(1f))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                    Text("\uD83D\uDCA7 $drops", style = MaterialTheme.typography.titleSmall, color = Color(0xFF39D39B), fontWeight = FontWeight.Bold)
+                                }
+                                Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                    Text("\uD83D\uDCB0 $playerCoins", style = MaterialTheme.typography.titleSmall, color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
-                        Column(Modifier.weight(1f)) {
-                            Text(boost.displayName, color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("Level ${curLevel}", color = AppColors.textMuted)
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Leaf Skins") }
+                    items(LeafSkin.entries) { skin ->
+                        val owned = ownedSkins.contains(skin.name)
+                        val active = uiState.leafSkin == skin
+                        val reqLvl = requiredLevelForSkin(skin)
+                        val coinCost = coinCostForSkin(skin)
+                        val isComing = isComingSoonSkin(skin)
+                        val locked = playerLevel < reqLvl && !owned
+
+                        val subtitleText = when {
+                            active -> "Equipped"
+                            owned -> "Owned"
+                            isComing -> "Coming Soon"
+                            locked -> "🔒 Level $reqLvl"
+                            else -> buildString {
+                                if (coinCost > 0) append("🪙 $coinCost ")
+                                if (skin.cost > 0) append("💧 ${skin.cost}")
+                            }
                         }
-                        Button(onClick = {
-                            pendingTitle = "Upgrade ${boost.displayName}"
-                            pendingPrice = price
-                            pendingAction = { viewModel.upgradeBooster(boost) }
-                        }) { Text("Upgrade • $price") }
+
+                        ShopTile(
+                            title = skin.displayName,
+                            subtitle = subtitleText,
+                            price = skin.cost,
+                            coinCost = coinCost,
+                            requiredLevel = reqLvl,
+                            playerLevel = playerLevel,
+                            playerCoins = playerCoins,
+                            owned = owned,
+                            active = active,
+                            comingSoon = isComing,
+                            afford = drops >= skin.cost && playerCoins >= coinCost,
+                            preview = skinPreviewStyle(skin),
+                            shaking = shakingItems[skin.name] ?: false,
+                            onPurchase = {
+                                if (isComing) {
+                                    Toast.makeText(context, "Coming Soon!", Toast.LENGTH_SHORT).show()
+                                } else if (locked) {
+                                    Toast.makeText(context, "Level $reqLvl required to unlock!", Toast.LENGTH_SHORT).show()
+                                } else if (drops >= skin.cost && playerCoins >= coinCost) {
+                                    pendingTitle = skin.displayName
+                                    pendingPrice = skin.cost
+                                    pendingCoinCost = coinCost
+                                    pendingAction = { viewModel.purchaseSkinWithCelebration(skin, coinCost) }
+                                } else {
+                                    shakingItems[skin.name] = true
+                                    Toast.makeText(context, "Insufficient funds!", Toast.LENGTH_SHORT).show()
+                                    coroutineScope.launch {
+                                        delay(500)
+                                        shakingItems[skin.name] = false
+                                    }
+                                }
+                            },
+                            onSelect = { viewModel.selectSkin(skin) }
+                        )
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Trail Skins") }
+                    items(TrailSkin.entries) { trailSkin ->
+                        val owned = ownedTrailSkins.contains(trailSkin.name)
+                        val active = activeTrailSkin == trailSkin
+                        val reqLvl = requiredLevelForTrail(trailSkin)
+                        val coinCost = coinCostForTrail(trailSkin)
+                        val isComing = isComingSoonTrail(trailSkin)
+                        val locked = playerLevel < reqLvl && !owned
+
+                        val subtitleText = when {
+                            active -> "Equipped"
+                            owned -> "Owned"
+                            isComing -> "Coming Soon"
+                            locked -> "🔒 Level $reqLvl"
+                            else -> buildString {
+                                if (coinCost > 0) append("🪙 $coinCost ")
+                                if (trailSkin.cost > 0) append("💧 ${trailSkin.cost}")
+                            }
+                        }
+
+                        ShopTile(
+                            title = trailSkin.displayName,
+                            subtitle = subtitleText,
+                            price = trailSkin.cost,
+                            coinCost = coinCost,
+                            requiredLevel = reqLvl,
+                            playerLevel = playerLevel,
+                            playerCoins = playerCoins,
+                            owned = owned,
+                            active = active,
+                            comingSoon = isComing,
+                            afford = drops >= trailSkin.cost && playerCoins >= coinCost,
+                            preview = trailPreviewStyle(trailSkin),
+                            shaking = shakingItems[trailSkin.name] ?: false,
+                            onPurchase = {
+                                if (isComing) {
+                                    Toast.makeText(context, "Coming Soon!", Toast.LENGTH_SHORT).show()
+                                } else if (locked) {
+                                    Toast.makeText(context, "Level $reqLvl required to unlock!", Toast.LENGTH_SHORT).show()
+                                } else if (drops >= trailSkin.cost && playerCoins >= coinCost) {
+                                    pendingTitle = trailSkin.displayName
+                                    pendingPrice = trailSkin.cost
+                                    pendingCoinCost = coinCost
+                                    pendingAction = { viewModel.purchaseTrailSkin(trailSkin, coinCost) }
+                                } else {
+                                    shakingItems[trailSkin.name] = true
+                                    Toast.makeText(context, "Insufficient funds!", Toast.LENGTH_SHORT).show()
+                                    coroutineScope.launch {
+                                        delay(500)
+                                        shakingItems[trailSkin.name] = false
+                                    }
+                                }
+                            },
+                            onSelect = { viewModel.selectTrailSkin(trailSkin) }
+                        )
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Boosters") }
+                    items(BoostKind.values().toList()) { boost ->
+                        val boosterLevels by viewModel.playerSettingsStore.boosterLevelsFlow.collectAsState(initial = emptyMap())
+                        val curLevel = boosterLevels[boost.name] ?: 0
+                        val price = 50 * (curLevel + 1)
+                        Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(boost.color).copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                                    Text(boost.displayName.take(1), color = Color(boost.color))
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(boost.displayName, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Level $curLevel", color = AppColors.textMuted)
+                                }
+                                val boosterAfford = drops >= price
+                                val shakeKey = "booster_${boost.name}"
+                                val shaking = shakingItems[shakeKey] ?: false
+                                val animOffset = remember { Animatable(0f) }
+                                val animFlash = remember { Animatable(0f) }
+                                LaunchedEffect(shaking) {
+                                    if (shaking) {
+                                        animFlash.animateTo(0.35f, tween(80))
+                                        repeat(4) {
+                                            animOffset.animateTo(8f, tween(40))
+                                            animOffset.animateTo(-8f, tween(40))
+                                        }
+                                        animOffset.animateTo(0f, tween(40))
+                                        animFlash.animateTo(0f, tween(200))
+                                    }
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (boosterAfford) {
+                                            pendingTitle = "Upgrade ${boost.displayName}"
+                                            pendingPrice = price
+                                            pendingCoinCost = 0
+                                            pendingAction = { viewModel.upgradeBooster(boost) }
+                                        } else {
+                                            shakingItems[shakeKey] = true
+                                            Toast.makeText(context, "Insufficient funds!", Toast.LENGTH_SHORT).show()
+                                            coroutineScope.launch {
+                                                delay(500)
+                                                shakingItems[shakeKey] = false
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.offset(x = animOffset.value.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (shaking) Color.Red else MaterialTheme.colorScheme.primary
+                                    )
+                                ) { Text("Upgrade • $price") }
+                            }
+                        }
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("River Themes") }
+                    items(RiverTheme.entries) { theme ->
+                        val owned = ownedThemes.contains(theme.name)
+                        val active = uiState.riverTheme == theme
+                        val reqLvl = requiredLevelForTheme(theme)
+                        val coinCost = coinCostForTheme(theme)
+                        val isComing = isComingSoonTheme(theme)
+                        val locked = playerLevel < reqLvl && !owned
+
+                        val subtitleText = when {
+                            active -> "Equipped"
+                            owned -> "Owned"
+                            isComing -> "Coming Soon"
+                            locked -> "🔒 Level $reqLvl"
+                            else -> buildString {
+                                if (coinCost > 0) append("🪙 $coinCost ")
+                                if (theme.cost > 0) append("💧 ${theme.cost}")
+                            }
+                        }
+
+                        ShopTile(
+                            title = theme.displayName,
+                            subtitle = subtitleText,
+                            price = theme.cost,
+                            coinCost = coinCost,
+                            requiredLevel = reqLvl,
+                            playerLevel = playerLevel,
+                            playerCoins = playerCoins,
+                            owned = owned,
+                            active = active,
+                            comingSoon = isComing,
+                            afford = drops >= theme.cost && playerCoins >= coinCost,
+                            preview = themePreviewStyle(theme),
+                            shaking = shakingItems[theme.name] ?: false,
+                            onPurchase = {
+                                if (isComing) {
+                                    Toast.makeText(context, "Coming Soon!", Toast.LENGTH_SHORT).show()
+                                } else if (locked) {
+                                    Toast.makeText(context, "Level $reqLvl required to unlock!", Toast.LENGTH_SHORT).show()
+                                } else if (drops >= theme.cost && playerCoins >= coinCost) {
+                                    pendingTitle = theme.displayName
+                                    pendingPrice = theme.cost
+                                    pendingCoinCost = coinCost
+                                    pendingAction = { viewModel.purchaseTheme(theme, coinCost) }
+                                } else {
+                                    shakingItems[theme.name] = true
+                                    Toast.makeText(context, "Insufficient funds!", Toast.LENGTH_SHORT).show()
+                                    coroutineScope.launch {
+                                        delay(500)
+                                        shakingItems[theme.name] = false
+                                    }
+                                }
+                            },
+                            onSelect = { viewModel.selectTheme(theme) }
+                        )
                     }
                 }
-            }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("My Collection", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                            Spacer(Modifier.weight(1f))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                    Text("\uD83D\uDCA7 $drops", style = MaterialTheme.typography.titleSmall, color = Color(0xFF39D39B), fontWeight = FontWeight.Bold)
+                                }
+                                Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                                    Text("\uD83D\uDCB0 $playerCoins", style = MaterialTheme.typography.titleSmall, color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
 
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("River Themes") }
-            items(RiverTheme.entries) { theme ->
-                val owned = ownedThemes.contains(theme.name)
-                val active = uiState.riverTheme == theme
-                ShopTile(
-                    title = theme.displayName,
-                    subtitle = if (active) "Equipped" else if (owned) "Owned" else "${theme.cost} drops",
-                    price = theme.cost,
-                    owned = owned,
-                    active = active,
-                    afford = drops >= theme.cost,
-                    preview = themePreviewStyle(theme),
-                    onPurchase = {
-                        pendingTitle = theme.displayName
-                        pendingPrice = theme.cost
-                        pendingAction = { viewModel.purchaseTheme(theme) }
-                    },
-                    onSelect = { viewModel.selectTheme(theme) }
-                )
+                    item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Leaf Skins") }
+                    val ownedSkinsList = LeafSkin.entries.filter { ownedSkins.contains(it.name) }
+                    items(ownedSkinsList) { skin ->
+                        val active = uiState.leafSkin == skin
+                        CollectionTile(
+                            title = skin.displayName,
+                            active = active,
+                            preview = skinPreviewStyle(skin),
+                            onSelect = { viewModel.selectSkin(skin) }
+                        )
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Trail Skins") }
+                    val ownedTrailsList = TrailSkin.entries.filter { ownedTrailSkins.contains(it.name) }
+                    items(ownedTrailsList) { trailSkin ->
+                        val active = activeTrailSkin == trailSkin
+                        CollectionTile(
+                            title = trailSkin.displayName,
+                            active = active,
+                            preview = trailPreviewStyle(trailSkin),
+                            onSelect = { viewModel.selectTrailSkin(trailSkin) }
+                        )
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("River Themes") }
+                    val ownedThemesList = RiverTheme.entries.filter { ownedThemes.contains(it.name) }
+                    items(ownedThemesList) { theme ->
+                        val active = uiState.riverTheme == theme
+                        CollectionTile(
+                            title = theme.displayName,
+                            active = active,
+                            preview = themePreviewStyle(theme),
+                            onSelect = { viewModel.selectTheme(theme) }
+                        )
+                    }
+                }
             }
         }
     }
 
     if (pendingTitle != null) {
-        val purchaseSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(onDismissRequest = { pendingTitle = null; pendingAction = null }, sheetState = purchaseSheetState) {
-            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Confirm Purchase", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Buy ${pendingTitle} for ${pendingPrice} River Drops?", color = AppColors.textMuted)
-                Box(Modifier.height(120.dp).fillMaxWidth()) {
-                    // lightweight preview placeholder
-                    Box(Modifier.align(Alignment.Center).size(96.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.02f)), contentAlignment = Alignment.Center) {
-                        Text(pendingTitle ?: "Item", color = AppColors.textMuted)
+        AlertDialog(
+            onDismissRequest = { pendingTitle = null; pendingAction = null },
+            title = { Text("Confirm Purchase", fontWeight = FontWeight.Bold, color = Color.White) },
+            text = {
+                val costText = buildString {
+                    if (pendingCoinCost > 0) append("🪙 $pendingCoinCost Coin(s)")
+                    if (pendingPrice > 0) {
+                        if (isNotEmpty()) append(" and ")
+                        append("💧 $pendingPrice River Drops")
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { pendingTitle = null; pendingAction = null }, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = { pendingAction?.invoke(); pendingTitle = null; pendingAction = null }, modifier = Modifier.weight(1f)) { Text("Buy • ${pendingPrice}") }
+                Text("Buy $pendingTitle for $costText?", color = Color.LightGray)
+            },
+            confirmButton = {
+                Button(onClick = { pendingAction?.invoke(); pendingTitle = null; pendingAction = null }) {
+                    Text("Buy")
                 }
-            }
-        }
-        // TODO-07 DONE
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingTitle = null; pendingAction = null }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = Color(0xFF0F1A15),
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 
     // Celebration overlay
@@ -863,37 +1280,18 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun ShopPreview(preview: ShopPreviewStyle, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    Box(modifier) {
-        // Try to prefer a bundled Lottie animation if present in `res/raw/shop_preview.json`.
-        val lottieRes = remember {
-            val id = context.resources.getIdentifier("shop_preview", "raw", context.packageName)
-            if (id != 0) id else null
-        }
+    val pulse = rememberInfiniteTransition(label = "shopPreviewPulse")
+    val scale by pulse.animateFloat(initialValue = 0.96f, targetValue = 1.06f, animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse), label = "shopPreviewScale")
+    val phase by pulse.animateFloat(initialValue = 0f, targetValue = 1f, animationSpec = infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Restart), label = "shopPreviewPhase")
+    Canvas(modifier = modifier.fillMaxSize()) {
+        drawRoundRect(preview.accent.copy(alpha = 0.08f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(18f, 18f))
+        drawRect(preview.brush, size = size, alpha = 0.9f)
 
-        if (lottieRes != null) {
-            val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(lottieRes))
-            val progress by animateLottieCompositionAsState(composition, iterations = LottieConstants.IterateForever)
-            LottieAnimation(
-                composition = composition,
-                progress = progress,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            val pulse = rememberInfiniteTransition(label = "shopPreviewPulse")
-            val scale by pulse.animateFloat(initialValue = 0.96f, targetValue = 1.06f, animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse), label = "shopPreviewScale")
-            val phase by pulse.animateFloat(initialValue = 0f, targetValue = 1f, animationSpec = infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Restart), label = "shopPreviewPhase")
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                drawRoundRect(preview.accent.copy(alpha = 0.08f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(18f, 18f))
-                drawRect(preview.brush, size = size, alpha = 0.9f)
-
-                when {
-                    preview.leafSkin != null -> drawLeafPreview(preview.leafSkin, phase, scale)
-                    preview.trailSkin != null -> drawTrailPreview(preview.trailSkin, phase)
-                    preview.theme != null -> drawThemePreview(preview.theme, phase)
-                    else -> drawEmptyLeafPreview(phase, scale)
-                }
-            }
+        when {
+            preview.leafSkin != null -> drawLeafPreview(preview.leafSkin, phase, scale)
+            preview.trailSkin != null -> drawTrailPreview(preview.trailSkin, phase)
+            preview.theme != null -> drawThemePreview(preview.theme, phase)
+            else -> drawEmptyLeafPreview(phase, scale)
         }
     }
 }
@@ -913,44 +1311,102 @@ private fun DrawScope.drawEmptyLeafPreview(phase: Float, scale: Float) {
     drawPath(leafPath, Color.White.copy(alpha = 0.12f), style = Stroke(1.6f))
 }
 
-// Shop preview supports animated Lottie or fallback drawing — TODO-05 DONE
-
 private fun DrawScope.drawLeafPreview(skin: LeafSkin, phase: Float, scale: Float) {
     val center = Offset(size.width * 0.5f, size.height * 0.5f)
     val leafW = size.width * 0.42f * scale
     val leafH = size.height * 0.52f * scale
-    val topLeft = Offset(center.x - leafW * 0.5f, center.y - leafH * 0.5f + sin((phase * Math.PI * 2).toFloat()).toFloat() * 4f)
+    
+    val swayAngle = if (skin == LeafSkin.CLASSIC) {
+        (4f * sin(phase * Math.PI * 2)).toFloat()
+    } else {
+        0f
+    }
+    
+    val tipYOffset = if (skin != LeafSkin.CLASSIC) sin((phase * Math.PI * 2).toFloat()).toFloat() * 4f else 0f
+    val topLeft = Offset(center.x - leafW * 0.5f, center.y - leafH * 0.5f + tipYOffset)
+    
     val leafPath = Path().apply {
         moveTo(topLeft.x + leafW * 0.5f, topLeft.y)
         cubicTo(topLeft.x + leafW, topLeft.y + leafH * 0.2f, topLeft.x + leafW * 0.95f, topLeft.y + leafH * 0.8f, topLeft.x + leafW * 0.5f, topLeft.y + leafH)
         cubicTo(topLeft.x + leafW * 0.05f, topLeft.y + leafH * 0.8f, topLeft.x, topLeft.y + leafH * 0.2f, topLeft.x + leafW * 0.5f, topLeft.y)
         close()
     }
-    val fill = when (skin) {
-        LeafSkin.CLASSIC -> Brush.linearGradient(listOf(Color(0xFF91DD5C), Color(0xFF366B24)))
-        LeafSkin.GOLDEN -> Brush.linearGradient(listOf(Color(0xFFFFEB8A), Color(0xFFC08B16)))
-        LeafSkin.FROST -> Brush.linearGradient(listOf(Color(0xFFC9F6FF), Color(0xFF5BAFD6)))
-        LeafSkin.FIRE -> Brush.linearGradient(listOf(Color(0xFFFF9A4D), Color(0xFFB52B14)))
-        LeafSkin.NEON -> Brush.linearGradient(listOf(Color(0xFF74FFB9), Color(0xFF0F8A63)))
-        LeafSkin.COSMIC -> Brush.linearGradient(listOf(Color(0xFFC49BFF), Color(0xFF4824A0)))
-        LeafSkin.RAINBOW -> Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Magenta, Color.Red), center)
-        LeafSkin.SHADOW -> Brush.linearGradient(listOf(Color(0xFF47385C), Color(0xFF0F0C14)))
-        LeafSkin.AURORA -> Brush.linearGradient(listOf(Color(0xFF37E1CE), Color(0xFFF47FBF)))
-        LeafSkin.JADE -> Brush.linearGradient(listOf(Color(0xFF1E7B4C), Color(0xFF0D3824)))
-        LeafSkin.CHERRY_BLOSSOM -> Brush.linearGradient(listOf(Color(0xFFFFBCD5), Color(0xFFCC5B88)))
-        LeafSkin.STORM -> Brush.linearGradient(listOf(Color(0xFF5C6674), Color(0xFF151922)))
-        LeafSkin.GALAXY -> Brush.linearGradient(listOf(Color(0xFF110814), Color(0xFF421D79)))
+
+    withTransform({
+        if (skin == LeafSkin.CLASSIC) {
+            rotate(swayAngle, center)
+        }
+    }) {
+        val fill = when (skin) {
+            LeafSkin.GOLDEN -> {
+                val shimmerX = size.width * phase * 2.5f - size.width * 0.75f
+                Brush.linearGradient(
+                    colors = listOf(Color(0xFFC08B16), Color(0xFFFFEB8A), Color(0xFFC08B16)),
+                    start = Offset(shimmerX - 30f, 0f),
+                    end = Offset(shimmerX + 30f, 0f)
+                )
+            }
+            LeafSkin.CLASSIC -> Brush.linearGradient(listOf(Color(0xFF91DD5C), Color(0xFF366B24)))
+            LeafSkin.FROST -> Brush.linearGradient(listOf(Color(0xFFC9F6FF), Color(0xFF5BAFD6)))
+            LeafSkin.FIRE -> Brush.linearGradient(listOf(Color(0xFFFF9A4D), Color(0xFFB52B14)))
+            LeafSkin.NEON -> Brush.linearGradient(listOf(Color(0xFF74FFB9), Color(0xFF0F8A63)))
+            LeafSkin.COSMIC -> Brush.linearGradient(listOf(Color(0xFFC49BFF), Color(0xFF4824A0)))
+            LeafSkin.RAINBOW -> Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Magenta, Color.Red), center)
+            LeafSkin.SHADOW -> Brush.linearGradient(listOf(Color(0xFF47385C), Color(0xFF0F0C14)))
+            LeafSkin.AURORA -> Brush.linearGradient(listOf(Color(0xFF37E1CE), Color(0xFFF47FBF)))
+            LeafSkin.JADE -> Brush.linearGradient(listOf(Color(0xFF1E7B4C), Color(0xFF0D3824)))
+            LeafSkin.CHERRY_BLOSSOM -> Brush.linearGradient(listOf(Color(0xFFFFBCD5), Color(0xFFCC5B88)))
+            LeafSkin.STORM -> Brush.linearGradient(listOf(Color(0xFF5C6674), Color(0xFF151922)))
+            LeafSkin.GALAXY -> Brush.linearGradient(listOf(Color(0xFF110814), Color(0xFF421D79)))
+        }
+
+        if (skin == LeafSkin.NEON) {
+            val neonPulse = (0.2f + 0.3f * sin(phase * Math.PI * 2).toFloat()).coerceIn(0f, 1f)
+            drawPath(leafPath, Color(0xFF00FFCC).copy(alpha = neonPulse))
+        }
+
+        drawPath(leafPath, fill)
+        drawPath(leafPath, previewStrokeForSkin(skin).copy(alpha = 0.5f), style = Stroke(2f))
+        
+        drawLine(Color.White.copy(alpha = 0.45f), Offset(center.x, topLeft.y + 6f), Offset(center.x, topLeft.y + leafH - 6f), strokeWidth = 2.2f)
+
+        if (skin == LeafSkin.FROST) {
+            val tipX = topLeft.x + leafW * 0.5f
+            val tipY = topLeft.y
+            val orbitRadius = 14f
+            repeat(3) { i ->
+                val angle = phase * 2 * Math.PI + i * (2 * Math.PI / 3)
+                val px = tipX + cos(angle).toFloat() * orbitRadius
+                val py = tipY + sin(angle).toFloat() * orbitRadius
+                drawCircle(Color(0xFFE0F7FF), 3f, Offset(px, py))
+            }
+        }
+
+        if (skin == LeafSkin.FIRE) {
+            val baseX = topLeft.x + leafW * 0.5f
+            val baseY = topLeft.y + leafH
+            repeat(3) { i ->
+                val flamePulse = 6f + 4f * sin(phase * 4 * Math.PI + i).toFloat()
+                val flameOpacity = 0.4f + 0.4f * sin(phase * 2 * Math.PI + i).toFloat()
+                drawCircle(Color(0xFFFF3D00).copy(alpha = flameOpacity), flamePulse, Offset(baseX + (i - 1) * 8f, baseY))
+            }
+        }
+
+        if (skin == LeafSkin.COSMIC) {
+            val orbitRadiusX = leafW * 0.65f
+            val orbitRadiusY = leafH * 0.65f
+            val angle1 = phase * 2 * Math.PI
+            val angle2 = angle1 + Math.PI
+            
+            val star1X = center.x + cos(angle1).toFloat() * orbitRadiusX
+            val star1Y = center.y + sin(angle1).toFloat() * orbitRadiusY
+            val star2X = center.x + cos(angle2).toFloat() * orbitRadiusX
+            val star2Y = center.y + sin(angle2).toFloat() * orbitRadiusY
+            
+            drawCircle(Color(0xFFE040FB), 4f, Offset(star1X, star1Y))
+            drawCircle(Color(0xFF00E5FF), 4f, Offset(star2X, star2Y))
+        }
     }
-    drawPath(leafPath, fill)
-    drawPath(leafPath, previewStrokeForSkin(skin).copy(alpha = 0.5f), style = Stroke(2f))
-    drawLine(Color.White.copy(alpha = 0.45f), Offset(center.x, topLeft.y + 6f), Offset(center.x, topLeft.y + leafH - 6f), strokeWidth = 2.2f)
-    if (skin == LeafSkin.FROST) repeat(4) { i -> drawCircle(Color(0xCCFFFFFF).copy(alpha = 0.35f), 2f, Offset(topLeft.x + leafW * (0.15f + i * 0.22f), topLeft.y + leafH * (0.18f + (i % 2) * 0.1f) + sin((phase + i * 0.3f) * Math.PI * 2).toFloat() * 2f)) }
-    if (skin == LeafSkin.FIRE) repeat(6) { i -> drawCircle(Color(0xFFFFA84D).copy(alpha = 0.8f - i * 0.1f), 2f - i * 0.15f, Offset(center.x + (i - 3) * 6f, topLeft.y + leafH + 4f + sin((phase + i * 0.15f) * Math.PI * 2).toFloat() * 5f)) }
-    if (skin == LeafSkin.NEON) drawCircle(Color(0xFF5BFFE5), leafW * 0.55f, center, style = Stroke(2.5f))
-    if (skin == LeafSkin.SHADOW) drawCircle(Color(0xFF7E51FF).copy(alpha = 0.22f), leafW * 0.58f, center)
-    if (skin == LeafSkin.AURORA) drawCircle(Color(0x66FFFFFF), leafW * 0.45f, center, style = Stroke(1.5f))
-    if (skin == LeafSkin.JADE) drawLine(Color(0xFFFFD66B), Offset(center.x, topLeft.y + 8f), Offset(center.x, topLeft.y + leafH - 8f), strokeWidth = 2f)
-    if (skin == LeafSkin.STORM) drawLine(Color(0xFF67C7FF), Offset(topLeft.x + leafW * 0.25f, topLeft.y + leafH * 0.4f), Offset(topLeft.x + leafW * 0.75f, topLeft.y + leafH * 0.55f), strokeWidth = 2f)
 }
 
 private fun DrawScope.drawTrailPreview(trailSkin: TrailSkin, phase: Float) {
@@ -1011,18 +1467,17 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
-private fun ShopTile(
+private fun CollectionTile(
     title: String,
-    subtitle: String,
-    price: Int,
-    owned: Boolean,
     active: Boolean,
-    afford: Boolean,
     preview: ShopPreviewStyle,
-    onPurchase: () -> Unit,
     onSelect: () -> Unit
 ) {
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF132621))) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF132621)),
+        modifier = Modifier.clickable { onSelect() }
+    ) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
                 Modifier
@@ -1031,19 +1486,139 @@ private fun ShopTile(
                     .clip(RoundedCornerShape(16.dp))
             ) {
                 ShopPreview(preview, Modifier.fillMaxSize())
-                Box(Modifier.align(Alignment.TopEnd).padding(10.dp).size(18.dp).clip(RoundedCornerShape(99.dp)).background(preview.accent.copy(alpha = 0.75f)))
+                if (active) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp)
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(99.dp))
+                            .background(Color(0xFF39D39B)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.Black, modifier = Modifier.size(16.dp))
+                    }
+                }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xCCFFFFFF))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                Checkbox(
+                    checked = active,
+                    onCheckedChange = { onSelect() },
+                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF39D39B), uncheckedColor = Color.White.copy(alpha = 0.5f))
+                )
             }
-            when {
-                active -> Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("Equipped") }
-                owned -> OutlinedButton(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("Equip") }
-                price == 0 -> OutlinedButton(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("Free") }
-                afford -> Button(onClick = onPurchase, modifier = Modifier.fillMaxWidth()) { Text("BUY • $price") }
-                else -> OutlinedButton(onClick = onPurchase, modifier = Modifier.fillMaxWidth()) { Text("Locked • $price") }
+        }
+    }
+}
+
+@Composable
+private fun ShopTile(
+    title: String,
+    subtitle: String,
+    price: Int,
+    coinCost: Int,
+    requiredLevel: Int,
+    playerLevel: Int,
+    playerCoins: Int,
+    owned: Boolean,
+    active: Boolean,
+    comingSoon: Boolean,
+    afford: Boolean,
+    preview: ShopPreviewStyle,
+    shaking: Boolean,
+    onPurchase: () -> Unit,
+    onSelect: () -> Unit
+) {
+    val animOffset = remember { Animatable(0f) }
+    val animFlash = remember { Animatable(0f) }
+    LaunchedEffect(shaking) {
+        if (shaking) {
+            animFlash.animateTo(0.35f, tween(80))
+            repeat(4) {
+                animOffset.animateTo(8f, tween(40))
+                animOffset.animateTo(-8f, tween(40))
             }
+            animOffset.animateTo(0f, tween(40))
+            animFlash.animateTo(0f, tween(200))
+        }
+    }
+
+    val locked = playerLevel < requiredLevel && !owned
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF132621)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset(x = animOffset.value.dp)
+    ) {
+        Box(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                ) {
+                    ShopPreview(preview, Modifier.fillMaxSize())
+                    
+                    if (coinCost > 0 && !owned) {
+                        Box(
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .padding(8.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color.Black.copy(alpha = 0.65f))
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
+                            Text("🪙 $coinCost", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Box(Modifier.align(Alignment.TopEnd).padding(10.dp).size(18.dp).clip(RoundedCornerShape(99.dp)).background(preview.accent.copy(alpha = 0.75f)))
+
+                    if (locked) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.6f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Color.White, modifier = Modifier.size(28.dp))
+                        }
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xCCFFFFFF))
+                }
+                when {
+                    active -> Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("Equipped") }
+                    owned -> OutlinedButton(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("Equip") }
+                    comingSoon -> OutlinedButton(onClick = onPurchase, modifier = Modifier.fillMaxWidth()) { Text("Coming Soon") }
+                    locked -> Button(
+                        onClick = onPurchase,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Filled.Lock, contentDescription = "Locked", modifier = Modifier.size(14.dp))
+                            Text("Lvl $requiredLevel")
+                        }
+                    }
+                    else -> Button(onClick = onPurchase, modifier = Modifier.fillMaxWidth()) {
+                        Text("BUY")
+                    }
+                }
+            }
+
+            // Red flash overlay
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(Color.Red.copy(alpha = animFlash.value))
+            )
         }
     }
 }
@@ -1094,98 +1669,301 @@ private fun themePreviewStyle(theme: RiverTheme): ShopPreviewStyle = when (theme
 }
 
 @Composable
-private fun ChallengesScreen(viewModel: GameViewModel, uiState: GameUiState, onBack: () -> Unit) {
+private fun ChallengesScreen(viewModel: GameViewModel, uiState: GameUiState, onBack: () -> Unit, onStartRun: () -> Unit) {
     val daily = uiState.dailyChallenge
     val dailyClaimed by viewModel.playerSettingsStore.dailyChallengeCompleted.collectAsState(initial = false)
+    val streak by viewModel.playerSettingsStore.challengeStreakFlow.collectAsState(initial = 0)
+    
+    var activePreviewChallenge by remember { mutableStateOf<ChallengeType?>(null) }
     var claimPulse by rememberSaveable { mutableStateOf(false) }
+    var showRain by remember { mutableStateOf(false) }
+    val rainParticles = remember { mutableStateListOf<RainParticle>() }
+
     val claimScale by animateFloatAsState(
-        targetValue = if (claimPulse) 1.06f else 1f,
+        targetValue = if (claimPulse) 1.08f else 1f,
         animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "dailyClaimScale"
     )
-    LaunchedEffect(claimPulse) {
-        if (claimPulse) {
-            delay(240)
-            claimPulse = false
+
+    // Ticker for countdown timer
+    var timeRemainingStr by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val msUntilNextDay = 86400000L - (System.currentTimeMillis() % 86400000L)
+            val h = msUntilNextDay / 3600000L
+            val m = (msUntilNextDay % 3600000L) / 60000L
+            val s = (msUntilNextDay % 60000L) / 1000L
+            timeRemainingStr = String.format("%02d:%02d:%02d", h, m, s)
+            delay(1000)
         }
     }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Daily Challenges", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF132923))) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Daily rotation", style = MaterialTheme.typography.labelLarge, color = Color(0xFF8CF0C5), fontWeight = FontWeight.Bold)
-                    Text("One challenge is active each day. Finish it to claim drops and keep the run streak moving.", style = MaterialTheme.typography.bodyMedium, color = Color(0xE6FFFFFF))
-                    Text("Premium balance: ${uiState.totalCoins} coin(s)", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFD54F))
-                    Text("Daily coin cap: ${uiState.dailyCoinsClaimedToday}/3 claimed today", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE8E8E8))
+    // Particle rain logic
+    LaunchedEffect(showRain) {
+        if (showRain) {
+            rainParticles.clear()
+            repeat(60) {
+                rainParticles.add(
+                    RainParticle(
+                        x = Random.nextFloat(),
+                        y = Random.nextFloat() * -0.5f,
+                        speed = 300f + Random.nextFloat() * 400f,
+                        size = 12f + Random.nextFloat() * 16f,
+                        type = if (Random.nextFloat() < 0.7f) "drop" else "coin",
+                        angle = Random.nextFloat() * 360f
+                    )
+                )
+            }
+            while (rainParticles.any { it.y < 1f }) {
+                delay(16)
+                rainParticles.forEach { p ->
+                    p.y += p.speed * 0.016f / 1000f
+                    p.x += sin(p.angle + System.currentTimeMillis() / 120f).toFloat() * 0.05f * 0.016f
                 }
             }
+            showRain = false
+        }
+    }
 
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Top Header Row with Streak
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Daily Challenges", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                    Spacer(Modifier.weight(1f))
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(99.dp))
+                            .background(Color(0xFFE64A19).copy(alpha = 0.12f))
+                            .border(1.dp, Color(0xFFFF5722).copy(alpha = 0.4f), RoundedCornerShape(99.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Canvas(modifier = Modifier.size(18.dp)) {
+                            val path = Path().apply {
+                                moveTo(size.width * 0.5f, size.height * 0.05f)
+                                cubicTo(size.width * 0.9f, size.height * 0.4f, size.width * 0.95f, size.height * 0.7f, size.width * 0.7f, size.height * 0.9f)
+                                cubicTo(size.width * 0.5f, size.height * 1.0f, size.width * 0.2f, size.height * 0.9f, size.width * 0.1f, size.height * 0.7f)
+                                cubicTo(size.width * 0.05f, size.height * 0.5f, size.width * 0.3f, size.height * 0.3f, size.width * 0.5f, size.height * 0.05f)
+                                close()
+                            }
+                            drawPath(path, Brush.verticalGradient(listOf(Color(0xFFE64A19), Color(0xFFFFB300))))
+                        }
+                        Text("$streak-Day Streak", style = MaterialTheme.typography.labelLarge, color = Color(0xFFFF7043), fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Active Challenge Banner
                 if (daily != null) {
-                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF153229))) {
-                    Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Today's Challenge", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text(daily.type.description, style = MaterialTheme.typography.bodyLarge, color = Color(0xCCFFFFFF))
-                        val animatedProgress by animateFloatAsState(targetValue = daily.progress.coerceIn(0f, 1f), animationSpec = tween(500), label = "dailyProgressAnim")
-                        LinearProgressIndicator(progress = animatedProgress, modifier = Modifier.fillMaxWidth().height(6.dp), color = Color(0xFF39D39B), trackColor = Color.White.copy(alpha = 0.12f))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Reward: \uD83D\uDCA7 ${daily.type.rewardDrops} River Drops", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White)
-                            Text("\uD83D\uDCB0 ${daily.type.rewardCoins} Coin(s)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFFFFD54F))
-                            if (daily.completed) {
-                                if (!dailyClaimed) {
+                    val progress = daily.progress.coerceIn(0f, 1f)
+                    val completed = daily.completed
+                    val stateLabel = when {
+                        dailyClaimed -> "CLAIMED"
+                        completed -> "COMPLETED"
+                        progress > 0f -> "IN PROGRESS"
+                        else -> "ACTIVE"
+                    }
+                    val stateColor = when {
+                        dailyClaimed -> Color(0xFF90A4AE)
+                        completed -> Color(0xFF26A69A)
+                        progress > 0f -> Color(0xFF29B6F6)
+                        else -> Color(0xFFFFCA28)
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F261F)),
+                        border = BorderStroke(1.dp, Color(0xFF39D39B).copy(alpha = 0.3f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { activePreviewChallenge = daily.type }
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(99.dp))
+                                        .background(stateColor.copy(alpha = 0.12f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(stateLabel, style = MaterialTheme.typography.labelSmall, color = stateColor, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Text("Ends in $timeRemainingStr", style = MaterialTheme.typography.labelMedium, color = Color(0xB3FFFFFF))
+                            }
+
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("TODAY'S CHALLENGE", style = MaterialTheme.typography.labelSmall, color = Color(0xFF39D39B), fontWeight = FontWeight.SemiBold)
+                                Text(daily.type.description, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = tween(500), label = "dailyProgressAnim")
+                                LinearProgressIndicator(
+                                    progress = { animatedProgress },
+                                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                                    color = Color(0xFF39D39B),
+                                    trackColor = Color.White.copy(alpha = 0.12f)
+                                )
+                                Row(Modifier.fillMaxWidth()) {
+                                    val percent = (progress * 100).toInt()
+                                    Text("$percent% completed", style = MaterialTheme.typography.bodySmall, color = Color(0x99FFFFFF))
+                                    Spacer(Modifier.weight(1f))
+                                    Text("Tip: Tap to view details", style = MaterialTheme.typography.bodySmall, color = Color(0x66FFFFFF))
+                                }
+                            }
+
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("💧 ${daily.type.rewardDrops}", style = MaterialTheme.typography.bodyMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("🪙 ${daily.type.rewardCoins}", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.weight(1f))
+                                if (completed && !dailyClaimed) {
                                     Button(
                                         onClick = {
                                             claimPulse = true
+                                            showRain = true
                                             viewModel.claimDailyChallenge()
                                         },
-                                        modifier = Modifier.scale(claimScale)
-                                    ) { Text("Claim ${daily.type.rewardDrops} drops") }
-                                } else {
-                                    Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0xFF39D39B)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                                        Text("Claimed", color = Color.Black, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                        modifier = Modifier.scale(claimScale),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF39D39B), contentColor = Color.Black)
+                                    ) {
+                                        Text("Claim Rewards", fontWeight = FontWeight.Bold)
+                                    }
+                                } else if (dailyClaimed) {
+                                    Box(Modifier.clip(RoundedCornerShape(99.dp)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                                        Text("Claimed", color = Color.LightGray, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
                         }
-                        if (daily.completed) Text("\u2705 Completed!", style = MaterialTheme.typography.titleMedium, color = Color(0xFF73F0B8))
                     }
                 }
-                // Animated coin reward pop when claimPulse is active
-                if (claimPulse) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                        Text("\uD83D\uDCB0 +${daily?.type?.rewardCoins ?: 0}", modifier = Modifier.padding(top = 6.dp).scale(claimScale), style = MaterialTheme.typography.headlineSmall, color = Color(0xFFFFD54F))
-                    }
-                }
-                // TODO-09 DONE (coins system integrated)
-                // TODO-10 DONE (challenge progress tracking)
-                // TODO-11 DONE (animated progress bar)
-                // TODO-12 DONE (claim + coin animation)
-            }
 
-            Text("All Challenges", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ChallengeType.entries.forEach { ch ->
-                    val isDaily = daily?.type == ch
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = if (isDaily) Color(0xFF173229) else Color(0xFF11221C))) {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text(ch.name.replace('_', ' '), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                                if (isDaily) {
-                                    Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0xFF39D39B)).padding(horizontal = 8.dp, vertical = 3.dp)) {
-                                        Text("Today", color = Color.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text("All Challenges", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ChallengeType.entries.forEach { ch ->
+                        val isDaily = daily?.type == ch
+                        val stateLabel = if (isDaily) "TODAY" else "LOCKED"
+                        val stateColor = if (isDaily) Color(0xFF39D39B) else Color(0x66FFFFFF)
+
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = if (isDaily) Color(0xFF132B23) else Color(0xFF0F1A17)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { activePreviewChallenge = ch }
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(ch.name.replace('_', ' '), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Spacer(Modifier.weight(1f))
+                                    Box(Modifier.clip(RoundedCornerShape(99.dp)).background(stateColor.copy(alpha = 0.1f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                                        Text(stateLabel, color = stateColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                     }
                                 }
+                                Text(ch.description, style = MaterialTheme.typography.bodyMedium, color = Color(0xCCFFFFFF))
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("💧 ${ch.rewardDrops}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF8CF0C5))
+                                    Text("🪙 ${ch.rewardCoins}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFD54F))
+                                }
                             }
-                            Text(ch.description, style = MaterialTheme.typography.bodyMedium, color = Color(0xCCFFFFFF))
-                            Text("\uD83D\uDCA7 ${ch.rewardDrops}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF8CF0C5))
+                        }
+                    }
+                }
+            }
+
+            // Claim rewards rain animation
+            if (showRain) {
+                Canvas(Modifier.fillMaxSize()) {
+                    rainParticles.forEach { p ->
+                        val px = p.x * size.width
+                        val py = p.y * size.height
+                        if (py in 0f..size.height) {
+                            if (p.type == "drop") {
+                                val path = Path().apply {
+                                    moveTo(px, py - p.size)
+                                    cubicTo(px + p.size, py, px + p.size, py + p.size, px, py + p.size)
+                                    cubicTo(px - p.size, py + p.size, px - p.size, py, px, py - p.size)
+                                    close()
+                                }
+                                drawPath(path, Color(0xFF4FC3F7).copy(alpha = 0.8f))
+                            } else {
+                                drawCircle(Color(0xFFFFD54F), radius = p.size, center = Offset(px, py))
+                                drawCircle(Color(0xFFFFA000), radius = p.size * 0.8f, center = Offset(px, py), style = Stroke(2f))
+                                drawCircle(Color(0xFFFFA000), radius = p.size * 0.4f, center = Offset(px, py))
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    // Interactive Preview details Modal
+    activePreviewChallenge?.let { challenge ->
+        val tips = when (challenge) {
+            ChallengeType.NO_POWER_UPS -> "Focus on clean steering and avoid the center lane where speed power-ups often spawn."
+            ChallengeType.SPEED_RUN -> "Grab as many Speed+ boosters as possible and avoid braking or colliding with obstacles."
+            ChallengeType.FOG_ONLY -> "Keep your eyes on the top of the screen; obstacles emerge quickly in the fog."
+            ChallengeType.DOUBLE_HURDLES -> "Use touch controls for rapid lane changes. Look for the gap in the double rows early."
+            ChallengeType.CALM_ONLY -> "Take this time to collect drops! Calm waters have fewer hurdles and lots of currency."
+            ChallengeType.PERFECT_RUN -> "Play conservatively. It is better to clear obstacles with a wide berth than to risk a near-miss."
+            ChallengeType.DROP_HUNTER -> "Equip the Magnet power-up if you can; it will pull drops from adjacent lanes automatically."
+        }
+        AlertDialog(
+            onDismissRequest = { activePreviewChallenge = null },
+            title = {
+                Text(challenge.name.replace('_', ' '), fontWeight = FontWeight.Bold, color = Color.White)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(challenge.description, style = MaterialTheme.typography.bodyLarge, color = Color.LightGray)
+                    Spacer(Modifier.height(4.dp))
+                    Text("TIPS & STRATEGY:", style = MaterialTheme.typography.labelSmall, color = Color(0xFF39D39B), fontWeight = FontWeight.Bold)
+                    Text(tips, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                    Spacer(Modifier.height(4.dp))
+                    Text("REWARDS ON COMPLETION:", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("💧 ${challenge.rewardDrops} River Drops", color = Color(0xFF8CF0C5), fontWeight = FontWeight.SemiBold)
+                        Text("🪙 ${challenge.rewardCoins} Coin(s)", color = Color(0xFFFFD54F), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        activePreviewChallenge = null
+                        // Launch the run!
+                        onStartRun() // Navigate to GAME screen by moving back to menu/game flow
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF39D39B), contentColor = Color.Black)
+                ) {
+                    Text("Start Challenge Run", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { activePreviewChallenge = null }) {
+                    Text("Close", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF0F1A17),
+            shape = RoundedCornerShape(28.dp)
+        )
+    }
 }
+
+private data class RainParticle(
+    var x: Float,
+    var y: Float,
+    val speed: Float,
+    val size: Float,
+    val type: String, // "drop" or "coin"
+    val angle: Float
+)
 
 @Composable
 private fun OnboardingOverlay(
@@ -1407,7 +2185,473 @@ private fun LeaderboardScreen(uiState: GameUiState, onBack: () -> Unit) {
 }
 
 @Composable
-private fun GameInfoScreen(onBack: () -> Unit) {
+private fun InfoCard(
+    appTheme: AppTheme,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val isLight = appTheme == AppTheme.LIGHT
+    val isAurora = appTheme == AppTheme.AURORA
+    val bgColor = when {
+        isLight -> Color(0xFFEAE4D9)
+        isAurora -> Color(0x1F7B61FF)
+        else -> Color(0x1F3DFFA0)
+    }
+    val borderColor = when {
+        isLight -> Color(0xFF1A2E1F)
+        isAurora -> Color(0x447B61FF)
+        else -> Color(0x443DFFA0)
+    }
+    val borderWidth = if (isLight) 1.5.dp else 1.dp
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(borderWidth, borderColor),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        modifier = modifier,
+        content = content
+    )
+}
+
+@Composable
+private fun GyroSteeringCanvas(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "gyro")
+    val angle by infiniteTransition.animateFloat(
+        initialValue = -25f,
+        targetValue = 25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "angle"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+
+        drawArc(
+            color = AppColors.textMuted.copy(alpha = 0.2f),
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(cx - w * 0.4f, cy - h * 0.4f),
+            size = Size(w * 0.8f, h * 0.8f),
+            style = Stroke(width = 4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+        )
+
+        withTransform({
+            rotate(angle, pivot = Offset(cx, cy))
+        }) {
+            drawRoundRect(
+                color = AppColors.textPrimary,
+                topLeft = Offset(cx - 24f, cy - 45f),
+                size = Size(48f, 90f),
+                cornerRadius = CornerRadius(8f, 8f),
+                style = Stroke(width = 4f)
+            )
+            drawRoundRect(
+                color = AppColors.textMuted.copy(alpha = 0.1f),
+                topLeft = Offset(cx - 22f, cy - 43f),
+                size = Size(44f, 86f),
+                cornerRadius = CornerRadius(6f, 6f)
+            )
+            drawLine(
+                color = AppColors.textPrimary,
+                start = Offset(cx - 10f, cy - 40f),
+                end = Offset(cx + 10f, cy - 40f),
+                strokeWidth = 3f
+            )
+            drawCircle(
+                color = AppColors.primaryGreen,
+                radius = 6f,
+                center = Offset(cx, cy)
+            )
+        }
+
+        val arrowAlpha = if (angle > 0) 1f else 0.3f
+        val arrowPathRight = Path().apply {
+            moveTo(cx + w * 0.3f, cy - h * 0.2f)
+            quadraticBezierTo(cx + w * 0.35f, cy, cx + w * 0.3f, cy + h * 0.2f)
+        }
+        drawPath(
+            path = arrowPathRight,
+            color = AppColors.primaryGreen.copy(alpha = arrowAlpha),
+            style = Stroke(width = 6f)
+        )
+    }
+}
+
+@Composable
+private fun DragSteeringCanvas(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "drag")
+    val slideOffset by infiniteTransition.animateFloat(
+        initialValue = -0.3f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "slide"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+
+        drawRoundRect(
+            color = AppColors.textPrimary,
+            topLeft = Offset(cx - 45f, cy - 36f),
+            size = Size(90f, 72f),
+            cornerRadius = CornerRadius(8f, 8f),
+            style = Stroke(width = 4f)
+        )
+
+        drawLine(
+            color = AppColors.textMuted.copy(alpha = 0.3f),
+            start = Offset(cx - 35f, cy),
+            end = Offset(cx + 35f, cy),
+            strokeWidth = 3f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+        )
+
+        val leafX = cx + slideOffset * 70f
+        drawCircle(
+            color = AppColors.primaryGreen,
+            radius = 7f,
+            center = Offset(leafX, cy)
+        )
+
+        drawCircle(
+            color = AppColors.textPrimary.copy(alpha = 0.5f),
+            radius = 12f,
+            center = Offset(leafX, cy + 12f)
+        )
+        drawCircle(
+            color = AppColors.textPrimary,
+            radius = 5f,
+            center = Offset(leafX, cy + 12f)
+        )
+    }
+}
+
+@Composable
+private fun TapSteeringCanvas(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "tap")
+    val sideIndex by infiniteTransition.animateValue(
+        initialValue = 0,
+        targetValue = 1,
+        typeConverter = Int.VectorConverter,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "side"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+
+        drawRoundRect(
+            color = AppColors.textPrimary,
+            topLeft = Offset(cx - 45f, cy - 36f),
+            size = Size(90f, 72f),
+            cornerRadius = CornerRadius(8f, 8f),
+            style = Stroke(width = 4f)
+        )
+
+        drawLine(
+            color = AppColors.textMuted.copy(alpha = 0.2f),
+            start = Offset(cx, cy - 34f),
+            end = Offset(cx, cy + 34f),
+            strokeWidth = 2f
+        )
+
+        val isLeft = sideIndex == 0
+        val highlightX = if (isLeft) cx - 43f else cx + 2f
+        drawRoundRect(
+            color = AppColors.primaryGreen.copy(alpha = 0.2f),
+            topLeft = Offset(highlightX, cy - 34f),
+            size = Size(41f, 68f),
+            cornerRadius = CornerRadius(4f, 4f)
+        )
+
+        val tapCenter = Offset(if (isLeft) cx - 22f else cx + 22f, cy)
+        drawCircle(
+            color = AppColors.primaryGreen.copy(alpha = 0.6f),
+            radius = 12f,
+            center = tapCenter
+        )
+        drawCircle(
+            color = AppColors.primaryGreen,
+            radius = 5f,
+            center = tapCenter
+        )
+
+        val leafX = if (isLeft) cx - 10f else cx + 10f
+        drawCircle(
+            color = AppColors.primaryGreen,
+            radius = 7f,
+            center = Offset(leafX, cy - 10f)
+        )
+    }
+}
+
+@Composable
+private fun BoosterIconCanvas(title: String, appTheme: AppTheme, modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "booster_icon")
+    val primaryColor = AppColors.primaryGreen
+
+    when (title) {
+        "Speed Boost" -> {
+            val pulseOffset by infiniteTransition.animateFloat(
+                initialValue = -5f,
+                targetValue = 5f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(400, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "speed"
+            )
+            Canvas(modifier) {
+                val w = size.width
+                val h = size.height
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.3f),
+                    start = Offset(10f, h * 0.3f + pulseOffset),
+                    end = Offset(w - 10f, h * 0.3f + pulseOffset),
+                    strokeWidth = 4f
+                )
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.3f),
+                    start = Offset(20f, h * 0.7f - pulseOffset),
+                    end = Offset(w - 20f, h * 0.7f - pulseOffset),
+                    strokeWidth = 4f
+                )
+
+                val path = Path().apply {
+                    moveTo(w * 0.55f, h * 0.15f)
+                    lineTo(w * 0.3f, h * 0.55f)
+                    lineTo(w * 0.5f, h * 0.55f)
+                    lineTo(w * 0.45f, h * 0.85f)
+                    lineTo(w * 0.7f, h * 0.45f)
+                    lineTo(w * 0.5f, h * 0.45f)
+                    close()
+                }
+                drawPath(
+                    path = path,
+                    color = primaryColor,
+                    style = Stroke(width = 6f, cap = StrokeCap.Round)
+                )
+            }
+        }
+        "Shield" -> {
+            val pulseScale by infiniteTransition.animateFloat(
+                initialValue = 0.7f,
+                targetValue = 1.0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1200, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "shield"
+            )
+            Canvas(modifier) {
+                val w = size.width
+                val h = size.height
+                val cx = w / 2f
+                val cy = h / 2f
+
+                drawCircle(
+                    color = primaryColor.copy(alpha = 0.4f),
+                    radius = (w * 0.45f) * pulseScale,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f))
+                )
+
+                val path = Path().apply {
+                    moveTo(cx, cy - h * 0.25f)
+                    quadraticBezierTo(cx + w * 0.25f, cy - h * 0.3f, cx + w * 0.25f, cy - h * 0.1f)
+                    lineTo(cx + w * 0.25f, cy + h * 0.1f)
+                    quadraticBezierTo(cx + w * 0.25f, cy + h * 0.3f, cx, cy + h * 0.35f)
+                    quadraticBezierTo(cx - w * 0.25f, cy + h * 0.3f, cx - w * 0.25f, cy + h * 0.1f)
+                    lineTo(cx - w * 0.25f, cy - h * 0.1f)
+                    quadraticBezierTo(cx - w * 0.25f, cy - h * 0.3f, cx, cy - h * 0.25f)
+                    close()
+                }
+                drawPath(
+                    path = path,
+                    color = primaryColor,
+                    style = Stroke(width = 6f, cap = StrokeCap.Round)
+                )
+            }
+        }
+        "Score Multiplier" -> {
+            val spinAngle by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "score"
+            )
+            Canvas(modifier) {
+                val w = size.width
+                val h = size.height
+                val cx = w / 2f
+                val cy = h / 2f
+
+                withTransform({
+                    rotate(spinAngle, pivot = Offset(cx, cy))
+                }) {
+                    val numPoints = 5
+                    val outerRadius = w * 0.35f
+                    val innerRadius = w * 0.16f
+                    val path = Path()
+                    for (i in 0 until 2 * numPoints) {
+                        val r = if (i % 2 == 0) outerRadius else innerRadius
+                        val angle = i * PI / numPoints - PI / 2
+                        val x = cx + cos(angle).toFloat() * r
+                        val y = cy + sin(angle).toFloat() * r
+                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    path.close()
+
+                    drawPath(
+                        path = path,
+                        color = primaryColor,
+                        style = Stroke(width = 6f, cap = StrokeCap.Round)
+                    )
+                }
+            }
+        }
+        "Magnet" -> {
+            val magnetPulse by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "magnet"
+            )
+            Canvas(modifier) {
+                val w = size.width
+                val h = size.height
+                val cx = w / 2f
+                val cy = h / 2f
+
+                val arcRadius = w * 0.3f + magnetPulse * 15f
+                drawArc(
+                    color = primaryColor.copy(alpha = 1f - magnetPulse),
+                    startAngle = 210f,
+                    sweepAngle = 120f,
+                    useCenter = false,
+                    topLeft = Offset(cx - arcRadius, cy - arcRadius - 10f),
+                    size = Size(arcRadius * 2f, arcRadius * 2f),
+                    style = Stroke(width = 4f, cap = StrokeCap.Round)
+                )
+
+                val path = Path().apply {
+                    moveTo(cx - w * 0.22f, cy - h * 0.15f)
+                    lineTo(cx - w * 0.22f, cy + h * 0.12f)
+                    quadraticBezierTo(cx - w * 0.22f, cy + h * 0.32f, cx, cy + h * 0.32f)
+                    quadraticBezierTo(cx + w * 0.22f, cy + h * 0.32f, cx + w * 0.22f, cy + h * 0.12f)
+                    lineTo(cx + w * 0.22f, cy - h * 0.15f)
+                    lineTo(cx + w * 0.08f, cy - h * 0.15f)
+                    lineTo(cx + w * 0.08f, cy + h * 0.12f)
+                    quadraticBezierTo(cx + w * 0.08f, cy + h * 0.18f, cx, cy + h * 0.18f)
+                    quadraticBezierTo(cx - w * 0.08f, cy + h * 0.18f, cx - w * 0.08f, cy + h * 0.12f)
+                    lineTo(cx - w * 0.08f, cy - h * 0.15f)
+                    close()
+                }
+                drawPath(
+                    path = path,
+                    color = primaryColor,
+                    style = Stroke(width = 6f, cap = StrokeCap.Round)
+                )
+
+                val leftTipPath = Path().apply {
+                    moveTo(cx - w * 0.22f, cy - h * 0.15f)
+                    lineTo(cx - w * 0.08f, cy - h * 0.15f)
+                    lineTo(cx - w * 0.08f, cy - h * 0.02f)
+                    lineTo(cx - w * 0.22f, cy - h * 0.02f)
+                    close()
+                }
+                drawPath(leftTipPath, color = AppColors.dangerRed)
+
+                val rightTipPath = Path().apply {
+                    moveTo(cx + w * 0.08f, cy - h * 0.15f)
+                    lineTo(cx + w * 0.22f, cy - h * 0.15f)
+                    lineTo(cx + w * 0.22f, cy - h * 0.02f)
+                    lineTo(cx + w * 0.08f, cy - h * 0.02f)
+                    close()
+                }
+                drawPath(rightTipPath, color = Color.White)
+            }
+        }
+        "Time Slow" -> {
+            val sandY by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1200, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "timeslow"
+            )
+            Canvas(modifier) {
+                val w = size.width
+                val h = size.height
+                val cx = w / 2f
+                val cy = h / 2f
+
+                val path = Path().apply {
+                    moveTo(w * 0.3f, h * 0.2f)
+                    lineTo(w * 0.7f, h * 0.2f)
+                    lineTo(cx + 4f, cy)
+                    lineTo(w * 0.7f, h * 0.8f)
+                    lineTo(w * 0.3f, h * 0.8f)
+                    lineTo(cx - 4f, cy)
+                    close()
+                }
+                drawPath(
+                    path = path,
+                    color = primaryColor,
+                    style = Stroke(width = 6f, cap = StrokeCap.Round)
+                )
+
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.7f),
+                    start = Offset(cx, cy),
+                    end = Offset(cx, cy + h * 0.3f * sandY),
+                    strokeWidth = 3f
+                )
+
+                val bottomSandPath = Path().apply {
+                    moveTo(cx - w * 0.15f * sandY, h * 0.8f)
+                    quadraticBezierTo(cx, h * 0.8f - (12f * sandY), cx + w * 0.15f * sandY, h * 0.8f)
+                    close()
+                }
+                drawPath(bottomSandPath, color = primaryColor.copy(alpha = 0.5f))
+            }
+        }
+        else -> {
+            Canvas(modifier) {
+                drawCircle(primaryColor, size.minDimension * 0.15f, center)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameInfoScreen(appTheme: AppTheme, onBack: () -> Unit) {
     val boosts = listOf(
         Triple("Speed Boost", "Temporarily increases leaf speed for quick escapes and higher point accrual.", listOf("Duration: 6s", "Effect: +60% speed", "Use: Tap to activate when available")),
         Triple("Shield", "Grants a temporary protective bubble that prevents one collision.", listOf("Duration: 4s", "Effect: Negates first collision", "Use: Auto-applies when collected")),
@@ -1426,16 +2670,14 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                 }
             }
 
-            // Scrollable, card-based explanation with small animated illustrations
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1F18))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("Basics", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Control the leaf by dragging or tapping. Avoid obstacles and collect drops to unlock cosmetics and boosters.", color = AppColors.textPrimary)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Box(Modifier.weight(1f).height(120.dp), contentAlignment = Alignment.Center) {
-                                    // Simple animated leaf moving left-right to demonstrate steering
                                     val animX = remember { Animatable(0f) }
                                     LaunchedEffect(Unit) {
                                         while (true) {
@@ -1446,8 +2688,8 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                                     Canvas(Modifier.fillMaxSize()) {
                                         val cx = size.width * (0.2f + animX.value * 0.6f)
                                         val cy = size.height * 0.5f
-                                        drawCircle(Color(0xFF64E1A7), 18f, Offset(cx, cy))
-                                        drawLine(Color.White.copy(alpha = 0.08f), Offset(cx - 30, cy + 20), Offset(cx + 30, cy + 20), strokeWidth = 6f)
+                                        drawCircle(AppColors.primaryGreen, 18f, Offset(cx, cy))
+                                        drawLine(AppColors.textPrimary.copy(alpha = 0.08f), Offset(cx - 30, cy + 20), Offset(cx + 30, cy + 20), strokeWidth = 6f)
                                     }
                                 }
                                 Column(Modifier.weight(1.1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1460,7 +2702,7 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                 }
 
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("Advanced Tips", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Use boosts strategically: save Speed Boost for long gaps, Magnet for risky drop clusters, and Shield for tight obstacle sequences.", color = AppColors.textPrimary)
@@ -1469,85 +2711,15 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Boosters section with animated icons and detailed bullets
                 item {
                     Text("Boosters", Modifier.padding(horizontal = 4.dp), color = AppColors.primaryGreen, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                 }
 
                 items(boosts) { (title, desc, bullets) ->
-                    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1E18))) {
+                    InfoCard(appTheme) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Box(Modifier.size(92.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF092A1F)), contentAlignment = Alignment.Center) {
-                                // small illustrative animation per booster type (derived from title)
-                                when (title) {
-                                    "Speed Boost" -> {
-                                        val anim = remember { Animatable(0f) }
-                                        LaunchedEffect(Unit) {
-                                            while (true) {
-                                                anim.animateTo(1f, tween(380))
-                                                anim.animateTo(0f, tween(380))
-                                            }
-                                        }
-                                        Canvas(Modifier.fillMaxSize()) {
-                                            val x = size.width * (0.15f + 0.7f * anim.value)
-                                            val y = size.height * 0.5f
-                                            drawCircle(Color(0xFF64E1A7), size.minDimension * 0.18f, Offset(x, y))
-                                            drawLine(Color(0xFF64E1A7).copy(alpha = 0.18f), Offset(x - 18f, y - 8f), Offset(x - 60f, y - 8f), strokeWidth = 8f)
-                                        }
-                                    }
-                                    "Shield" -> {
-                                        val anim = remember { Animatable(0.6f) }
-                                        LaunchedEffect(Unit) {
-                                            while (true) {
-                                                anim.animateTo(1f, tween(500))
-                                                anim.animateTo(0.6f, tween(500))
-                                            }
-                                        }
-                                        Canvas(Modifier.fillMaxSize()) {
-                                            val cx = size.width / 2f; val cy = size.height / 2f
-                                            drawCircle(Color(0xFF7BCEFF).copy(alpha = 0.18f), size.minDimension * anim.value, Offset(cx, cy))
-                                            drawCircle(Color(0xFF7BCEFF), size.minDimension * 0.12f, Offset(cx, cy))
-                                        }
-                                    }
-                                    "Score Multiplier" -> {
-                                        val anim = remember { Animatable(0f) }
-                                        LaunchedEffect(Unit) {
-                                            while (true) {
-                                                anim.animateTo(1f, tween(600))
-                                                anim.animateTo(0f, tween(600))
-                                            }
-                                        }
-                                        Canvas(Modifier.fillMaxSize()) {
-                                            val cx = size.width / 2f
-                                            drawCircle(Color(0xFFFFD54F).copy(alpha = 0.2f), size.minDimension * (0.2f + 0.15f * anim.value), Offset(cx, size.height * 0.45f))
-                                            // no native canvas needed; purely Compose drawing
-                                            drawCircle(Color(0xFFFFD54F), size.minDimension * 0.12f, Offset(cx, size.height * 0.45f))
-                                        }
-                                    }
-                                    "Magnet" -> {
-                                        val anim = remember { Animatable(0f) }
-                                        LaunchedEffect(Unit) {
-                                            while (true) {
-                                                anim.animateTo(1f, tween(520))
-                                                anim.animateTo(0f, tween(520))
-                                            }
-                                        }
-                                        Canvas(Modifier.fillMaxSize()) {
-                                            val cx = size.width / 2f; val cy = size.height / 2f
-                                            for (i in 0 until 6) {
-                                                val angle = i * (PI.toFloat() * 2f / 6f) + anim.value * 2f
-                                                val r = size.minDimension * (0.26f + 0.06f * anim.value)
-                                                val px = cx + cos(angle) * r
-                                                val py = cy + sin(angle) * r
-                                                drawCircle(Color(0xFF8BE38B), 4f, Offset(px, py))
-                                            }
-                                            drawCircle(Color(0xFF8BE38B), size.minDimension * 0.12f, Offset(cx, cy))
-                                        }
-                                    }
-                                    else -> {
-                                        Canvas(Modifier.fillMaxSize()) { drawCircle(Color.LightGray, size.minDimension * 0.12f, center) }
-                                    }
-                                }
+                            Box(Modifier.size(92.dp).clip(RoundedCornerShape(12.dp)).background(AppColors.backgroundDark.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                                BoosterIconCanvas(title = title, appTheme = appTheme, modifier = Modifier.fillMaxSize())
                             }
 
                             Column(Modifier.weight(1f)) {
@@ -1565,46 +2737,34 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Controls section with Lottie diagrams if present
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Controls", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("Gyroscope / Touch Drag / Tap — choose the control mode that fits your device and playstyle.", color = AppColors.textPrimary)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val ctx = LocalContext.current
-                                val gyroId = remember { ctx.resources.getIdentifier("lottie_gyro", "raw", ctx.packageName) }
-                                val touchId = remember { ctx.resources.getIdentifier("lottie_touch", "raw", ctx.packageName) }
-                                val gyroPresent = gyroId != 0
-                                val touchPresent = touchId != 0
+                            Text("Steering Modes", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text("Gyroscope / Touch Drag / Tap — choose the control mode that fits your device and playstyle under Settings.", color = AppColors.textPrimary)
+                            Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (gyroPresent) {
-                                        val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(gyroId))
-                                        val prog by animateLottieCompositionAsState(comp, iterations = LottieConstants.IterateForever)
-                                        LottieAnimation(comp, prog, modifier = Modifier.size(88.dp))
-                                    } else Icon(Icons.Default.TouchApp, contentDescription = null, tint = AppColors.primaryGreen, modifier = Modifier.size(64.dp))
-                                    Text("Gyroscope", color = AppColors.textMuted)
+                                    GyroSteeringCanvas(Modifier.size(88.dp))
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Gyroscope", color = AppColors.textMuted, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (touchPresent) {
-                                        val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(touchId))
-                                        val prog by animateLottieCompositionAsState(comp, iterations = LottieConstants.IterateForever)
-                                        LottieAnimation(comp, prog, modifier = Modifier.size(88.dp))
-                                    } else Icon(Icons.Default.TouchApp, contentDescription = null, tint = AppColors.primaryGreen, modifier = Modifier.size(64.dp))
-                                    Text("Touch / Drag", color = AppColors.textMuted)
+                                    DragSteeringCanvas(Modifier.size(88.dp))
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Touch / Drag", color = AppColors.textMuted, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.TouchApp, contentDescription = null, tint = AppColors.primaryGreen, modifier = Modifier.size(64.dp))
-                                    Text("Tap", color = AppColors.textMuted)
+                                    TapSteeringCanvas(Modifier.size(88.dp))
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Tap Screen", color = AppColors.textMuted, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
                     }
                 }
 
-                // Scoring
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Scoring", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Score accumulates by passing obstacles, collecting drops and chaining combos. Base obstacle pass = 10 points.", color = AppColors.textPrimary)
@@ -1614,9 +2774,8 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Levels thresholds
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Levels", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             val thresholds = listOf(0,80,200,400,700,1100,1600,2200,3000,4000)
@@ -1630,9 +2789,8 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // River Drops
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("River Drops", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("River Drops are the main currency used to buy skins, trails and themes. Collect in-run or earn from challenges and achievements.", color = AppColors.textPrimary)
@@ -1641,26 +2799,17 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Coins (rare currency)
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Coins", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Coins are rare, max 3 per day. Earned from daily challenges. Use coins for premium purchases and major boosters.", color = AppColors.textPrimary)
-                            val ctx = LocalContext.current
-                            val coinId = remember { ctx.resources.getIdentifier("lottie_coin", "raw", ctx.packageName) }
-                            if (coinId != 0) {
-                                val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(coinId))
-                                val prog by animateLottieCompositionAsState(comp, iterations = LottieConstants.IterateForever)
-                                LottieAnimation(comp, prog, modifier = Modifier.size(64.dp))
-                            }
                         }
                     }
                 }
 
-                // Obstacles types
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Obstacle Types", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Mossy Boulder — slow moving, large target. Driftwood — semi-wide with tilt. Lily Pads — small safe spots. Ice Spires — sharp and fragile.", color = AppColors.textMuted)
@@ -1669,9 +2818,8 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Leaf skins
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Leaf Skins", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Skins are cosmetic. Some change subtle particle trails or highlights. Visit the shop to preview and buy.", color = AppColors.textPrimary)
@@ -1679,9 +2827,8 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Trail skins
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Trail Skins", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Trail skins change the particle trail behind your leaf. Choose Sparkle, Bubble, Fire, Ice, Neon and more in the shop.", color = AppColors.textPrimary)
@@ -1689,9 +2836,8 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // River themes
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("River Themes", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Themes change background layers, music and obstacles. Some themes add unique obstacles and particles.", color = AppColors.textPrimary)
@@ -1699,43 +2845,26 @@ private fun GameInfoScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Daily challenges
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Daily Challenges", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("Complete daily objectives to earn drops and coins. Coin rewards are capped at 3/day.", color = AppColors.textPrimary)
-                            val ctx = LocalContext.current
-                            val trophyId = remember { ctx.resources.getIdentifier("lottie_trophy", "raw", ctx.packageName) }
-                            if (trophyId != 0) {
-                                val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(trophyId))
-                                val prog by animateLottieCompositionAsState(comp, iterations = LottieConstants.IterateForever)
-                                LottieAnimation(comp, prog, modifier = Modifier.size(64.dp))
-                            }
                         }
                     }
                 }
 
-                // Credits
                 item {
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Credits", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("🍃 Hydra Leaf | Created by Sharan S | Assets: Kenney.nl (CC0), OpenGameArt.org (CC0), LottieFiles (Free), SVGRepo (CC0), Rive Community (Free) | Version 1.0.0", color = AppColors.textMuted)
-                            val ctx = LocalContext.current
-                            val leafId = remember { ctx.resources.getIdentifier("lottie_leaf_fall", "raw", ctx.packageName) }
-                            if (leafId != 0) {
-                                val comp by rememberLottieComposition(LottieCompositionSpec.RawRes(leafId))
-                                val prog by animateLottieCompositionAsState(comp, iterations = LottieConstants.IterateForever)
-                                LottieAnimation(comp, prog, modifier = Modifier.size(88.dp))
-                            }
                         }
                     }
-                    // TODO-15 DONE
                 }
+
                 item {
-                    // Final tips card with actionable checklist
-                    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF071613))) {
+                    InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Ready to Play", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("- Start on easy difficulty to learn obstacle patterns.\n- Use boosters conservatively and combine with near-miss combos.\n- Visit the shop to preview trails and skins.\n- Open settings to adjust HUD opacity and particle density for clearer visuals.", color = AppColors.textPrimary)
@@ -1750,6 +2879,7 @@ private fun GameInfoScreen(onBack: () -> Unit) {
 @Composable
 private fun SettingsScreen(
     settings: ControlSettings,
+    onAppThemeChanged: (AppTheme) -> Unit,
     onDifficultyChanged: (DifficultyPreset) -> Unit,
     onMusicVolumeChanged: (Float) -> Unit,
     onSfxVolumeChanged: (Float) -> Unit,
@@ -1757,6 +2887,7 @@ private fun SettingsScreen(
     onHapticIntensityChanged: (HapticIntensity) -> Unit,
     onShowSpeedIndicatorChanged: (Boolean) -> Unit,
     onShowTrailEffectChanged: (Boolean) -> Unit,
+    onTrailDensityChanged: (Float) -> Unit,
     onShowNearMissFlashChanged: (Boolean) -> Unit,
     onHudOpacityChanged: (Float) -> Unit,
     onParticleDensityChanged: (ParticleDensity) -> Unit,
@@ -1771,6 +2902,57 @@ private fun SettingsScreen(
                 IconButton(onClose, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AppColors.textPrimary) }
                 Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
             }
+            SettingsSectionCard("Appearance") {
+                Text("THEME", color = AppColors.textMuted, style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp), fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    AppTheme.entries.forEach { themeOption ->
+                        val selected = themeOption == settings.appTheme
+                        val mainColor = when (themeOption) {
+                            AppTheme.DARK -> Color(0xFF0D2B1E)
+                            AppTheme.LIGHT -> Color(0xFFF5F0E8)
+                            AppTheme.AURORA -> Color(0xFF0F0A2E)
+                        }
+                        val accentColor = when (themeOption) {
+                            AppTheme.DARK -> Color(0xFF3DFFA0)
+                            AppTheme.LIGHT -> Color(0xFF1A7A4A)
+                            AppTheme.AURORA -> Color(0xFF7B61FF)
+                        }
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp)
+                                .border(
+                                    2.dp,
+                                    if (selected) Color(0xFF3DFFA0) else Color.Transparent,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable { onAppThemeChanged(themeOption) },
+                            colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard)
+                        ) {
+                            Row(
+                                Modifier.fillMaxSize().padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.size(width = 36.dp, height = 20.dp).clip(RoundedCornerShape(4.dp))
+                                ) {
+                                    Box(Modifier.weight(1f).fillMaxHeight().background(mainColor))
+                                    Box(Modifier.weight(1f).fillMaxHeight().background(accentColor))
+                                }
+                                Text(
+                                    themeOption.displayName,
+                                    color = AppColors.textPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             SettingsSectionCard("Gameplay") {
                 Text("DEFAULT DIFFICULTY", color = AppColors.textMuted, style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp), fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(2.dp))
@@ -1782,6 +2964,10 @@ private fun SettingsScreen(
                     LabeledSwitch("Show speed indicator", settings.showSpeedIndicator, onShowSpeedIndicatorChanged)
                     SettingsDivider()
                     LabeledSwitch("Show trail effect", settings.showTrailEffect, onShowTrailEffectChanged)
+                    if (settings.showTrailEffect) {
+                        SettingsDivider()
+                        SettingsSlider("Trail Density ${(settings.trailDensity * 100f).fmt(0)}%", settings.trailDensity, 0.1f..1.0f, onTrailDensityChanged)
+                    }
                     SettingsDivider()
                     LabeledSwitch("Show near-miss flash", settings.showNearMissFlash, onShowNearMissFlashChanged)
                     SettingsDivider()

@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf.audio
+package com.example.hydraleaf.audio
 
 import android.content.Context
 import android.media.AudioAttributes
@@ -14,15 +14,16 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /**
- * Synthesised audio engine — zero external assets.
+ * Synthesised audio engine + External asset loading.
  *
- * 5-layer adaptive music: bass drone, rhythm pulse, melody, harmony, accent.
- * Pentatonic dodge tones, pitch-shifted water rush, collect/death SFX.
+ * Loops BG music from assets/audio/music/ or res/raw, preloads SFX from assets/audio/sfx/ or res/raw.
+ * Falls back to 5-layer adaptive synthesised music and chirps if assets are not present.
  */
 class GameAudioEngine(private val context: Context) {
 
     private val sr = GameConstants.AUDIO_SAMPLE_RATE
     private val running = AtomicBoolean(false)
+    
     @Volatile
     private var backingSoundEnabled = true
     var soundEnabled: Boolean
@@ -40,8 +41,10 @@ class GameAudioEngine(private val context: Context) {
                 player.pause()
             }
         }
+        
     @Volatile var intensity = 0f        // 0..1 drives music layers
     @Volatile var speedFactor = 1f      // drives water-rush pitch
+    
     @Volatile
     var musicVolume = 0.8f
         set(value) {
@@ -51,7 +54,7 @@ class GameAudioEngine(private val context: Context) {
 
     @Volatile var sfxVolume = 0.9f
 
-    // Pre-generated clips
+    // Pre-generated synthesized clips
     private val dodgeClips: Array<ShortArray>
     private val collectClip: ShortArray
     private val deathClip: ShortArray
@@ -71,7 +74,7 @@ class GameAudioEngine(private val context: Context) {
     private var musicThread: Thread? = null
     private var musicTrack: AudioTrack? = null
 
-    // Active SFX layers
+    // Active synthesized SFX layers queue
     private val sfxQueue = java.util.concurrent.ConcurrentLinkedQueue<ShortArray>()
 
     init {
@@ -86,7 +89,7 @@ class GameAudioEngine(private val context: Context) {
         levelUpClip = generateChirp(520f, 1200f, 0.22f, 0.25f)
 
         soundPool = SoundPool.Builder()
-            .setMaxStreams(8)
+            .setMaxStreams(10)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_GAME)
@@ -95,13 +98,11 @@ class GameAudioEngine(private val context: Context) {
             )
             .build()
 
-        // If free/CC0 assets are present in res/raw, use them automatically.
         loadOptionalExternalAudio()
     }
 
     fun preload() {
-        // Intentionally empty: constructing the engine eagerly loads clips, sound pool,
-        // and any available raw assets through the initializer above.
+        // Audio assets preloaded inside init block via loadOptionalExternalAudio()
     }
 
     // ── Public API ──────────────────────────────────────────────────────────
@@ -181,7 +182,7 @@ class GameAudioEngine(private val context: Context) {
                 // Mix in SFX from queue
                 val sfx = sfxQueue.poll()
                 if (sfx != null) {
-                    val mixLen = minOf(chunk.size, sfx.size)
+                    val mixLen = Math.min(chunk.size, sfx.size)
                     for (i in 0 until mixLen) {
                         val mixed = chunk[i].toInt() + (sfx[i].toInt() * sfxVolume).toInt()
                         chunk[i] = mixed.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
@@ -212,6 +213,51 @@ class GameAudioEngine(private val context: Context) {
 
     fun setTheme(theme: RiverTheme) {
         currentTheme = theme
+        
+        // Try assets first
+        val themeName = theme.name.lowercase()
+        val assetFd = try {
+            context.assets.openFd("audio/music/bg_music_loop_$themeName.mp3")
+        } catch (e: Exception) {
+            try {
+                context.assets.openFd("audio/music/bg_music_loop_$themeName.ogg")
+            } catch (e2: Exception) {
+                try {
+                    context.assets.openFd("audio/music/bg_music_loop.mp3")
+                } catch (e3: Exception) {
+                    try {
+                        context.assets.openFd("audio/music/bg_music_loop.ogg")
+                    } catch (e4: Exception) {
+                        null
+                    }
+                }
+            }
+        }
+
+        if (assetFd != null) {
+            if (!usesExternalMusic && running.get()) {
+                running.set(false)
+                musicThread?.join(300)
+                musicThread = null
+            }
+            val wasPlaying = mediaPlayer?.isPlaying == true
+            mediaPlayer?.release()
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(assetFd.fileDescriptor, assetFd.startOffset, assetFd.length)
+                assetFd.close()
+                isLooping = true
+                setVolume(musicVolume, musicVolume)
+                prepare()
+            }
+            usesExternalMusic = true
+            currentMusicResId = 999999
+            if ((wasPlaying || externalMusicSessionActive) && soundEnabled) {
+                mediaPlayer?.start()
+            }
+            return
+        }
+
+        // Fall back to res/raw
         val newResId = rawResId(themeMusicName(theme))
         if (newResId == 0) {
             if (usesExternalMusic) {
@@ -247,6 +293,8 @@ class GameAudioEngine(private val context: Context) {
         }
     }
 
+    // ── Sound slots triggers ──────────────────────────────────────────────────
+
     fun playDodge(noteIndex: Int = 0) {
         if (playExternalSfx("sfx_obstacle_pass")) return
         if (!soundEnabled) return
@@ -254,12 +302,12 @@ class GameAudioEngine(private val context: Context) {
     }
 
     fun playCollect() {
-        if (playExternalSfx("sfx_collect")) return
+        if (playExternalSfx("collect_drop") || playExternalSfx("sfx_collect")) return
         if (soundEnabled) sfxQueue.offer(collectClip)
     }
 
     fun playDeath() {
-        if (playExternalSfx("sfx_game_over")) return
+        if (playExternalSfx("game_over") || playExternalSfx("sfx_game_over")) return
         if (soundEnabled) sfxQueue.offer(deathClip)
     }
 
@@ -269,7 +317,7 @@ class GameAudioEngine(private val context: Context) {
     }
 
     fun playNearMiss() {
-        if (playExternalSfx("sfx_near_miss")) return
+        if (playExternalSfx("near_miss") || playExternalSfx("sfx_near_miss")) return
         if (soundEnabled) sfxQueue.offer(nearMissClip)
     }
 
@@ -279,8 +327,53 @@ class GameAudioEngine(private val context: Context) {
     }
 
     fun playLevelUp() {
-        if (playExternalSfx("sfx_level_up")) return
+        if (playExternalSfx("level_up") || playExternalSfx("sfx_level_up")) return
         if (soundEnabled) sfxQueue.offer(levelUpClip)
+    }
+
+    fun playBoosterPickup(type: String) {
+        val sfxName = when (type.lowercase()) {
+            "speed" -> "booster_pickup_speed"
+            "shield" -> "booster_pickup_shield"
+            "magnet" -> "booster_pickup_magnet"
+            else -> "sfx_boost_collect"
+        }
+        if (playExternalSfx(sfxName) || playExternalSfx("sfx_boost_collect")) return
+        if (soundEnabled) sfxQueue.offer(powerUpClip)
+    }
+
+    fun playBoosterActivate(type: String) {
+        val sfxName = when (type.lowercase()) {
+            "speed" -> "booster_activate_speed"
+            "shield" -> "booster_activate_shield"
+            else -> "sfx_boost_collect"
+        }
+        if (playExternalSfx(sfxName)) return
+        if (soundEnabled) sfxQueue.offer(powerUpClip)
+    }
+
+    fun playBoosterExpire() {
+        if (playExternalSfx("booster_expire")) return
+        if (soundEnabled) sfxQueue.offer(shieldBreakClip)
+    }
+
+    fun playCollision() {
+        if (playExternalSfx("collision") || playExternalSfx("sfx_game_over")) return
+        if (soundEnabled) sfxQueue.offer(deathClip)
+    }
+
+    fun playMenuTap() {
+        if (playExternalSfx("menu_tap") || playExternalSfx("sfx_ui_tap")) return
+    }
+
+    fun playDailyComplete() {
+        if (playExternalSfx("daily_complete") || playExternalSfx("sfx_level_up")) return
+        if (soundEnabled) sfxQueue.offer(levelUpClip)
+    }
+
+    fun playPurchase() {
+        if (playExternalSfx("purchase") || playExternalSfx("sfx_collect")) return
+        if (soundEnabled) sfxQueue.offer(collectClip)
     }
 
     /** Number of currently active music layers (1-5) based on intensity */
@@ -316,15 +409,38 @@ class GameAudioEngine(private val context: Context) {
     }
 
     private fun loadOptionalExternalAudio() {
-        externalSfxIds["sfx_collect"] = loadRawSound("sfx_collect")
-        externalSfxIds["sfx_obstacle_pass"] = loadRawSound("sfx_obstacle_pass")
-        externalSfxIds["sfx_game_over"] = loadRawSound("sfx_game_over")
-        externalSfxIds["sfx_boost_collect"] = loadRawSound("sfx_boost_collect")
-        externalSfxIds["sfx_ui_tap"] = loadRawSound("sfx_ui_tap")
-        externalSfxIds["sfx_near_miss"] = loadRawSound("sfx_near_miss")
-        externalSfxIds["sfx_shield_break"] = loadRawSound("sfx_shield_break")
-        externalSfxIds["sfx_level_up"] = loadRawSound("sfx_level_up")
-
+        val sfxNames = listOf(
+            "collect_drop", "sfx_collect",
+            "booster_pickup_speed", "booster_pickup_shield", "booster_pickup_magnet", "sfx_boost_collect",
+            "booster_activate_speed", "booster_activate_shield",
+            "booster_expire", "sfx_shield_break",
+            "near_miss", "sfx_near_miss",
+            "collision", "sfx_game_over",
+            "level_up", "sfx_level_up",
+            "menu_tap", "sfx_ui_tap",
+            "daily_complete", "purchase"
+        )
+        
+        sfxNames.forEach { name ->
+            val assetFd = try {
+                context.assets.openFd("audio/sfx/$name.wav")
+            } catch (e: Exception) {
+                try {
+                    context.assets.openFd("audio/sfx/$name.mp3")
+                } catch (e2: Exception) {
+                    null
+                }
+            }
+            if (assetFd != null) {
+                val soundId = soundPool.load(assetFd, 1)
+                externalSfxIds[name] = soundId
+            } else {
+                val resId = rawResId(name)
+                if (resId != 0) {
+                    externalSfxIds[name] = soundPool.load(context, resId, 1)
+                }
+            }
+        }
         setTheme(currentTheme)
     }
 
@@ -334,12 +450,6 @@ class GameAudioEngine(private val context: Context) {
         RiverTheme.VOLCANIC -> "music_lava"
         RiverTheme.CRYSTAL -> "music_crystal"
         RiverTheme.MIDNIGHT -> "music_midnight"
-    }
-
-    private fun loadRawSound(name: String): Int {
-        val resId = rawResId(name)
-        if (resId == 0) return 0
-        return soundPool.load(context, resId, 1)
     }
 
     private fun rawResId(name: String): Int =

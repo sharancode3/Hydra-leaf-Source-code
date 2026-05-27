@@ -34,3 +34,10 @@ keystore.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# Node / JS tooling
+node_modules/
+package-lock.json
+compress.js
+fix_icons.py
+package.json

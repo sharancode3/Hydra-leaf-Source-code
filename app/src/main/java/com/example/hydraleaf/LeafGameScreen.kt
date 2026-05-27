@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf
+package com.example.hydraleaf
 
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
@@ -101,6 +102,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.animation.core.tween
@@ -138,25 +141,56 @@ import kotlinx.coroutines.isActive
 // ── Theme color palettes for river themes ────────────────────────────────────
 
 private object ThemeColors {
-    fun waterGradient(theme: RiverTheme, dayPhase: DayPhase): List<Color> = when (theme) {
-        RiverTheme.FOREST  -> when (dayPhase) {
-            DayPhase.DAWN  -> listOf(Color(0xFF0A2520), Color(0xFF1A5040), Color(0xFF208060))
-            DayPhase.DAY   -> listOf(Color(0xFF03111A), Color(0xFF053A4A), Color(0xFF0C6B5F))
-            DayPhase.DUSK  -> listOf(Color(0xFF1A1008), Color(0xFF3A2510), Color(0xFF4A3818))
-            DayPhase.NIGHT -> listOf(Color(0xFF020810), Color(0xFF061828), Color(0xFF0A2838))
+    fun waterGradient(theme: RiverTheme, dayPhase: DayPhase, appTheme: AppTheme): List<Color> {
+        if (appTheme == AppTheme.LIGHT) {
+            return when (theme) {
+                RiverTheme.FOREST -> listOf(Color(0xFFF5F0E8), Color(0xFFEBE5D8), Color(0xFFDFD9CD))
+                RiverTheme.ARCTIC -> listOf(Color(0xFFE6F3F7), Color(0xFFD4EAEF), Color(0xFFBFDFE7))
+                RiverTheme.VOLCANIC -> listOf(Color(0xFFF7EBE6), Color(0xFFEFDDD4), Color(0xFFE7CEBF))
+                RiverTheme.CRYSTAL -> listOf(Color(0xFFF0E6F7), Color(0xFFE4D4EF), Color(0xFFD7BFDF))
+                RiverTheme.MIDNIGHT -> listOf(Color(0xFFEBE6F7), Color(0xFFDDD4EF), Color(0xFFCEBFDF))
+            }
         }
-        RiverTheme.ARCTIC  -> listOf(Color(0xFF0A1828), Color(0xFF1A3858), Color(0xFF3070A0))
-        RiverTheme.VOLCANIC -> listOf(Color(0xFF1A0808), Color(0xFF3A1010), Color(0xFF602020))
-        RiverTheme.CRYSTAL -> listOf(Color(0xFF100820), Color(0xFF281848), Color(0xFF483080))
-        RiverTheme.MIDNIGHT -> listOf(Color(0xFF020208), Color(0xFF080818), Color(0xFF101030))
+        if (appTheme == AppTheme.AURORA) {
+            return when (theme) {
+                RiverTheme.FOREST -> listOf(Color(0xFF0F0A2E), Color(0xFF1D1452), Color(0xFF2B1E78))
+                RiverTheme.ARCTIC -> listOf(Color(0xFF0D0A24), Color(0xFF171342), Color(0xFF221B66))
+                RiverTheme.VOLCANIC -> listOf(Color(0xFF180A2E), Color(0xFF2D1452), Color(0xFF421E78))
+                RiverTheme.CRYSTAL -> listOf(Color(0xFF0F0A2E), Color(0xFF221354), Color(0xFF381E7A))
+                RiverTheme.MIDNIGHT -> listOf(Color(0xFF0B0626), Color(0xFF140D3E), Color(0xFF1F145C))
+            }
+        }
+        return when (theme) {
+            RiverTheme.FOREST  -> when (dayPhase) {
+                DayPhase.DAWN  -> listOf(Color(0xFF0A2520), Color(0xFF1A5040), Color(0xFF208060))
+                DayPhase.DAY   -> listOf(Color(0xFF03111A), Color(0xFF053A4A), Color(0xFF0C6B5F))
+                DayPhase.DUSK  -> listOf(Color(0xFF1A1008), Color(0xFF3A2510), Color(0xFF4A3818))
+                DayPhase.NIGHT -> listOf(Color(0xFF020810), Color(0xFF061828), Color(0xFF0A2838))
+            }
+            RiverTheme.ARCTIC  -> listOf(Color(0xFF0A1828), Color(0xFF1A3858), Color(0xFF3070A0))
+            RiverTheme.VOLCANIC -> listOf(Color(0xFF1A0808), Color(0xFF3A1010), Color(0xFF602020))
+            RiverTheme.CRYSTAL -> listOf(Color(0xFF100820), Color(0xFF281848), Color(0xFF483080))
+            RiverTheme.MIDNIGHT -> listOf(Color(0xFF020208), Color(0xFF080818), Color(0xFF101030))
+        }
     }
 
-    fun rippleColor(theme: RiverTheme): Color = when (theme) {
-        RiverTheme.FOREST  -> Color(0xFF59F0FF)
-        RiverTheme.ARCTIC  -> Color(0xFFA0D8FF)
-        RiverTheme.VOLCANIC -> Color(0xFFFF6040)
-        RiverTheme.CRYSTAL -> Color(0xFFB080FF)
-        RiverTheme.MIDNIGHT -> Color(0xFF4040FF)
+    fun rippleColor(theme: RiverTheme, appTheme: AppTheme): Color {
+        if (appTheme == AppTheme.LIGHT) {
+            return when (theme) {
+                RiverTheme.FOREST -> Color(0xFF1A7A4A)
+                RiverTheme.ARCTIC -> Color(0xFF1A5E7A)
+                RiverTheme.VOLCANIC -> Color(0xFFB3361B)
+                RiverTheme.CRYSTAL -> Color(0xFF651BCA)
+                RiverTheme.MIDNIGHT -> Color(0xFF1B2ECA)
+            }
+        }
+        return when (theme) {
+            RiverTheme.FOREST  -> Color(0xFF59F0FF)
+            RiverTheme.ARCTIC  -> Color(0xFFA0D8FF)
+            RiverTheme.VOLCANIC -> Color(0xFFFF6040)
+            RiverTheme.CRYSTAL -> Color(0xFFB080FF)
+            RiverTheme.MIDNIGHT -> Color(0xFF4040FF)
+        }
     }
 
     fun leafColors(skin: LeafSkin): Pair<Color, Color> = when (skin) {
@@ -198,10 +232,16 @@ private fun loadObstacleSprites(context: android.content.Context): ObstacleSprit
 
 private fun loadFirstAssetBitmap(context: android.content.Context, vararg assetPaths: String): ImageBitmap? {
     for (path in assetPaths) {
-        val bmp = runCatching {
-            context.assets.open(path).use { stream -> BitmapFactory.decodeStream(stream)?.asImageBitmap() }
-        }.getOrNull()
-        if (bmp != null) return bmp
+        val pathsToTry = listOf(
+            path,
+            path.replace(".png", ".webp").replace(".jpg", ".webp").replace(".jpeg", ".webp")
+        ).distinct()
+        for (p in pathsToTry) {
+            val bmp = runCatching {
+                context.assets.open(p).use { stream -> BitmapFactory.decodeStream(stream)?.asImageBitmap() }
+            }.getOrNull()
+            if (bmp != null) return bmp
+        }
     }
     return null
 }
@@ -231,7 +271,53 @@ fun LeafGameScreen(
         effects.forEach { e ->
             val s = logicalToScreen(android.graphics.PointF(e.x, e.y), vp)
             val age = e.age.coerceIn(0f, 1f)
-            if (e.kind == "score") {
+            
+            if (e.text != null) {
+                // Floating text pop fading and moving upwards
+                val alpha = (1f - age).pow(1.2f)
+                val scale = 1f + (1f - age) * 0.8f
+                drawContext.canvas.nativeCanvas.apply {
+                    save()
+                    translate(s.x, s.y - 45f * vp.scale * age)
+                    scale(scale, scale)
+                    val paint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        color = when {
+                            e.text.contains("SPEED") -> android.graphics.Color.YELLOW
+                            e.text.contains("SHIELD") -> android.graphics.Color.CYAN
+                            e.text.contains("MAGNET") -> android.graphics.Color.MAGENTA
+                            else -> android.graphics.Color.WHITE
+                        }
+                        textSize = (20f * vp.scale)
+                        setShadowLayer(6f * vp.scale, 0f, 0f, android.graphics.Color.argb((150 * alpha).toInt(), 0, 0, 0))
+                        textAlign = android.graphics.Paint.Align.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    }
+                    drawText(e.text, 0f, 0f, paint)
+                    restore()
+                }
+
+                // Particle burst matching the booster's color
+                val ringRadius = (6f + (48f - 6f) * age) * vp.scale
+                val ringAlpha = (1f - age).pow(1.4f)
+                val ringColor = when {
+                    e.text.contains("SPEED") -> Color(0xFFFFD83D)
+                    e.text.contains("SHIELD") -> Color(0xFF44F0C5)
+                    e.text.contains("MAGNET") -> Color(0xFFFF6AA8)
+                    else -> Color(0xFFFAFF7A)
+                }
+                drawCircle(ringColor.copy(alpha = 0.35f * ringAlpha), ringRadius * 1.1f, Offset(s.x, s.y))
+                drawCircle(ringColor.copy(alpha = 0.9f * ringAlpha), ringRadius, Offset(s.x, s.y), style = Stroke(2f * vp.scale))
+
+                val sparks = 8
+                for (i in 0 until sparks) {
+                    val ang = i * (2 * PI.toFloat() / sparks) + age * 6f
+                    val dist = ringRadius * (0.6f + age * 0.6f)
+                    val px = s.x + cos(ang) * dist
+                    val py = s.y + sin(ang) * dist
+                    drawCircle(ringColor.copy(alpha = 0.8f * ringAlpha), 3f * vp.scale, Offset(px, py))
+                }
+            } else if (e.kind == "score") {
                 val alpha = (1f - age).pow(1.2f)
                 val scale = 1f + (1f - age) * 0.8f
                 drawContext.canvas.nativeCanvas.apply {
@@ -368,11 +454,16 @@ fun LeafGameScreen(
             // Procedural light rays
             drawLightRays(uiState.runTime, uiState.dayPhase, vp)
 
+            // Speed wind streaks
+            drawSpeedWindStreaks(uiState.runTime, uiState.activePowerUps.any { it.type == PowerUpType.SPEED_BOOST })
+
             // Narrow channel walls
             if (uiState.narrowChannelOffset > 0f) drawNarrowChannel(uiState.narrowChannelOffset, vp)
 
-            // Trail particles
-            drawTrailParticles(uiState.trailParticles, uiState.leafSkin, vp)
+            // Rolling buffer trail
+            if (uiState.controlSettings.showTrailEffect) {
+                drawRollingTrail(uiState.trailPositions, uiState.leafSkin, uiState.controlSettings.trailDensity, uiState.runTime, vp)
+            }
 
             // Obstacles with procedural textures
             drawObstacles(uiState, vp, obstacleSprites)
@@ -389,10 +480,53 @@ fun LeafGameScreen(
             // Leaf with breathing + lean
             drawLeaf(uiState, vp, reusableLeafPath)
 
-            // Shield visual
+            // Shield visual: animated pulsing boundary bubble
             if (uiState.activePowerUps.any { it.type == PowerUpType.SHIELD }) {
-                val c = logicalToScreen(PointF(uiState.leafX, uiState.leafY), vp)
-                drawCircle(Color(0x5500AAFF), GameConstants.SHIELD_FLASH_RADIUS * vp.scale, Offset(c.x, c.y), style = Stroke(4f * vp.scale))
+                val c = logicalToScreen(android.graphics.PointF(uiState.leafX, uiState.leafY), vp)
+                val pulse = sin(uiState.runTime * 10f) * 4f * vp.scale
+                val baseRadius = GameConstants.SHIELD_FLASH_RADIUS * vp.scale
+                drawCircle(Color(0x2200E5FF), baseRadius + pulse, Offset(c.x, c.y))
+                drawCircle(Color(0x8800E5FF), baseRadius + pulse, Offset(c.x, c.y), style = Stroke(2f * vp.scale))
+                drawCircle(Color(0x4400E5FF), baseRadius + pulse + 6f * vp.scale, Offset(c.x, c.y), style = Stroke(1.5f * vp.scale))
+            }
+
+            // Magnet visual: rotating dashed-circle aura
+            if (uiState.activePowerUps.any { it.type == PowerUpType.MAGNET }) {
+                val c = logicalToScreen(android.graphics.PointF(uiState.leafX, uiState.leafY), vp)
+                val rotationAngle = uiState.runTime * 45f
+                val pullRadius = GameConstants.MAGNET_PULL_RADIUS * vp.scale
+                drawCircle(
+                    color = Color(0xFFFF4081).copy(alpha = 0.15f),
+                    radius = pullRadius,
+                    center = Offset(c.x, c.y)
+                )
+                withTransform({
+                    rotate(rotationAngle, Offset(c.x, c.y))
+                }) {
+                    drawCircle(
+                        color = Color(0xFFFF4081).copy(alpha = 0.5f),
+                        radius = pullRadius,
+                        center = Offset(c.x, c.y),
+                        style = Stroke(
+                            width = 2f * vp.scale,
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                                floatArrayOf(15f * vp.scale, 15f * vp.scale),
+                                0f
+                            )
+                        )
+                    )
+                }
+            }
+
+            // Near-miss edge flash overlay
+            if (uiState.controlSettings.showNearMissFlash && uiState.nearMissFlashAlpha > 0f) {
+                val strokeW = 24f * vp.scale
+                drawRect(
+                    color = Color.Red.copy(alpha = uiState.nearMissFlashAlpha * 0.4f),
+                    topLeft = Offset(0f, 0f),
+                    size = size,
+                    style = Stroke(width = strokeW)
+                )
             }
 
             // Fog overlay
@@ -426,6 +560,52 @@ fun LeafGameScreen(
         // Power-up HUD timers
         AnimatedVisibility(visible = uiState.activePowerUps.isNotEmpty() && uiState.phase == GamePhase.PLAYING) {
             PowerUpHud(Modifier.align(Alignment.TopEnd).padding(end = 16.dp, top = 80.dp), uiState.activePowerUps)
+        }
+
+        // Near-Miss Combo Multiplier Overlay
+        AnimatedVisibility(
+            visible = uiState.phase == GamePhase.PLAYING && uiState.nearMissComboMultiplier > 1,
+            enter = fadeIn() + scaleIn(initialScale = 0.5f),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 16.dp, top = 80.dp),
+                contentAlignment = Alignment.TopStart
+            ) {
+                val scale by animateFloatAsState(
+                    targetValue = if (uiState.nearMissComboMultiplier > 1) 1.15f else 1.0f,
+                    animationSpec = tween(durationMillis = 200),
+                    label = "comboScale"
+                )
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xCCFF9800)),
+                    modifier = Modifier
+                        .scale(scale)
+                        .border(2.dp, Color(0xFFFFEB3B), RoundedCornerShape(16.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "${uiState.nearMissComboMultiplier}X COMBO",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Black
+                        )
+                        val progress = (uiState.nearMissComboTimer / 3.0f).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            color = Color(0xFFFFEB3B),
+                            trackColor = Color.White.copy(alpha = 0.2f),
+                            modifier = Modifier.width(60.dp).height(3.dp).padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // River event indicator
@@ -478,7 +658,7 @@ fun LeafGameScreen(
                 Box(Modifier.fillMaxSize()) {
                     LottieAnimation(composition = comp, progress = { prog }, modifier = Modifier.fillMaxSize())
                     GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
-                        uiState.runDropsEarned, uiState.sensitivitySuggestion,
+                        uiState.runDropsEarned, uiState.riverDrops, uiState.sensitivitySuggestion,
                         onNewRun = { viewModel.startNewRun() },
                         onBackToMenu = onBackToMenu,
                         onShare = {
@@ -497,7 +677,7 @@ fun LeafGameScreen(
                 }
             } else {
                 GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
-                    uiState.runDropsEarned, uiState.sensitivitySuggestion,
+                    uiState.runDropsEarned, uiState.riverDrops, uiState.sensitivitySuggestion,
                     onNewRun = { viewModel.startNewRun() },
                     onBackToMenu = onBackToMenu,
                     onShare = {
@@ -524,7 +704,8 @@ fun LeafGameScreen(
                 onRequestCalibrate, { showSettings = false }, { viewModel.resetSettings() },
                 { viewModel.setMusicVolume(it) }, { viewModel.setSfxVolume(it) }, { viewModel.setHapticsEnabled(it) },
                 { viewModel.setHapticIntensity(it) },
-                { viewModel.setDifficultyPreset(it) }, { viewModel.setShowSpeedIndicator(it) }, { viewModel.setShowTrailEffect(it) })
+                { viewModel.setDifficultyPreset(it) }, { viewModel.setShowSpeedIndicator(it) }, { viewModel.setShowTrailEffect(it) },
+                { viewModel.setTrailDensity(it) })
         }
 
         // Debug
@@ -540,7 +721,7 @@ fun LeafGameScreen(
 // ── Draw: 5-layer parallax background ────────────────────────────────────────
 
 private fun DrawScope.drawParallaxBackground(ui: GameUiState, vp: ViewportMapping) {
-    val colors = ThemeColors.waterGradient(ui.riverTheme, ui.dayPhase)
+    val colors = ThemeColors.waterGradient(ui.riverTheme, ui.dayPhase, ui.controlSettings.appTheme)
     drawRect(brush = Brush.verticalGradient(colors), size = size, alpha = 0.94f)
 
     // Use configured number of parallax layers for more depth and smoother per-layer motion
@@ -565,6 +746,28 @@ private fun DrawScope.drawParallaxBackground(ui: GameUiState, vp: ViewportMappin
         )
     }
     // TODO-28 DONE: Parallax background enhanced with additional layers and smoother motion
+}
+
+private fun DrawScope.drawSpeedWindStreaks(runTime: Float, speedActive: Boolean) {
+    val count = if (speedActive) 16 else 8
+    val speed = if (speedActive) 1400f else 600f
+    
+    for (i in 0 until count) {
+        val seed = i * 263.17f
+        val x = (seed % 1f) * size.width
+        val speedOffset = (seed * 73.5f) % 1f
+        val y = ((runTime * speed + speedOffset * size.height) % size.height)
+        
+        val length = if (speedActive) 120f else 60f
+        val alpha = if (speedActive) 0.35f else 0.15f
+        
+        drawLine(
+            color = Color.White.copy(alpha = alpha),
+            start = Offset(x, y),
+            end = Offset(x, y + length),
+            strokeWidth = 2f
+        )
+    }
 }
 
 // ── Draw: procedural light rays ──────────────────────────────────────────────
@@ -598,6 +801,143 @@ private fun DrawScope.drawNarrowChannel(offset: Float, vp: ViewportMapping) {
     drawRect(wallColor, topLeft = Offset(size.width - px, 0f), size = Size(px, size.height))
 }
 
+private fun DrawScope.drawRollingTrail(
+    positions: List<android.graphics.PointF>,
+    skin: LeafSkin,
+    density: Float,
+    runTime: Float,
+    vp: ViewportMapping
+) {
+    if (positions.isEmpty()) return
+    
+    val densityAlphaMultiplier = density.coerceIn(0.1f, 1f)
+    val sizeMultiplier = vp.scale
+
+    when (skin) {
+        LeafSkin.NEON -> {
+            val screenPoints = positions.map { logicalToScreen(it, vp) }
+            val path = Path().apply {
+                if (screenPoints.isNotEmpty()) {
+                    moveTo(screenPoints[0].x, screenPoints[0].y)
+                    for (i in 1 until screenPoints.size) {
+                        lineTo(screenPoints[i].x, screenPoints[i].y)
+                    }
+                }
+            }
+            if (screenPoints.isNotEmpty()) {
+                drawPath(
+                    path = path,
+                    color = Color(0xFF00F3B9).copy(alpha = 0.4f * densityAlphaMultiplier),
+                    style = Stroke(width = 16f * sizeMultiplier, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+                drawPath(
+                    path = path,
+                    color = Color.White.copy(alpha = 0.9f * densityAlphaMultiplier),
+                    style = Stroke(width = 6f * sizeMultiplier, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+            }
+        }
+        LeafSkin.FIRE -> {
+            positions.forEachIndexed { index, pt ->
+                val progress = (index + 1) / positions.size.toFloat()
+                val screenPos = logicalToScreen(pt, vp)
+                val driftX = sin(runTime * 8f + index) * 12f * (1f - progress) * sizeMultiplier
+                val driftY = - (1f - progress) * 20f * sizeMultiplier
+                val r = 16f * progress * sizeMultiplier
+                val alpha = progress * 0.85f * densityAlphaMultiplier
+                
+                drawCircle(
+                    color = Color(0xFFFF5722).copy(alpha = alpha),
+                    radius = r,
+                    center = Offset(screenPos.x + driftX, screenPos.y + driftY)
+                )
+                drawCircle(
+                    color = Color(0xFFFFEB3B).copy(alpha = alpha),
+                    radius = r * 0.5f,
+                    center = Offset(screenPos.x + driftX, screenPos.y + driftY)
+                )
+            }
+        }
+        LeafSkin.FROST -> {
+            positions.forEachIndexed { index, pt ->
+                val progress = (index + 1) / positions.size.toFloat()
+                val screenPos = logicalToScreen(pt, vp)
+                val alpha = progress * 0.7f * densityAlphaMultiplier
+                val r = 10f * progress * sizeMultiplier
+                
+                drawCircle(
+                    color = Color(0xFFE0F7FA).copy(alpha = alpha),
+                    radius = r,
+                    center = Offset(screenPos.x, screenPos.y)
+                )
+                
+                if (index % 2 == 0) {
+                    val lineLength = 12f * progress * sizeMultiplier
+                    drawLine(
+                        color = Color.White.copy(alpha = alpha),
+                        start = Offset(screenPos.x - lineLength, screenPos.y),
+                        end = Offset(screenPos.x + lineLength, screenPos.y),
+                        strokeWidth = 2f * sizeMultiplier
+                    )
+                    drawLine(
+                        color = Color.White.copy(alpha = alpha),
+                        start = Offset(screenPos.x, screenPos.y - lineLength),
+                        end = Offset(screenPos.x, screenPos.y + lineLength),
+                        strokeWidth = 2f * sizeMultiplier
+                    )
+                }
+            }
+        }
+        LeafSkin.COSMIC -> {
+            positions.forEachIndexed { index, pt ->
+                val progress = (index + 1) / positions.size.toFloat()
+                val screenPos = logicalToScreen(pt, vp)
+                val alpha = progress * 0.8f * densityAlphaMultiplier
+                
+                drawCircle(
+                    color = Color(0xFF9C27B0).copy(alpha = alpha * 0.5f),
+                    radius = 8f * progress * sizeMultiplier,
+                    center = Offset(screenPos.x, screenPos.y)
+                )
+                
+                val orbitRadius = 14f * (1f - progress + 0.3f) * sizeMultiplier
+                val angle1 = index * 0.6f + runTime * 6f
+                val angle2 = angle1 + PI.toFloat()
+                
+                val orbitX1 = screenPos.x + cos(angle1) * orbitRadius
+                val orbitY1 = screenPos.y + sin(angle1) * orbitRadius
+                drawCircle(
+                    color = Color(0xFFE040FB).copy(alpha = alpha),
+                    radius = 4f * progress * sizeMultiplier,
+                    center = Offset(orbitX1, orbitY1)
+                )
+                
+                val orbitX2 = screenPos.x + cos(angle2) * orbitRadius
+                val orbitY2 = screenPos.y + sin(angle2) * orbitRadius
+                drawCircle(
+                    color = Color(0xFF00E5FF).copy(alpha = alpha),
+                    radius = 3f * progress * sizeMultiplier,
+                    center = Offset(orbitX2, orbitY2)
+                )
+            }
+        }
+        else -> {
+            positions.forEachIndexed { index, pt ->
+                val progress = (index + 1) / positions.size.toFloat()
+                val screenPos = logicalToScreen(pt, vp)
+                val alpha = progress * 0.6f * densityAlphaMultiplier
+                val r = 12f * progress * sizeMultiplier
+                
+                drawCircle(
+                    color = Color.White.copy(alpha = alpha),
+                    radius = r,
+                    center = Offset(screenPos.x, screenPos.y)
+                )
+            }
+        }
+    }
+}
+
 // ── Draw: particle trail ─────────────────────────────────────────────────────
 
 private fun DrawScope.drawTrailParticles(particles: List<TrailParticle>, skin: LeafSkin, vp: ViewportMapping) {
@@ -627,7 +967,7 @@ private fun DrawScope.drawTrailParticles(particles: List<TrailParticle>, skin: L
 // ── Draw: water ripples ──────────────────────────────────────────────────────
 
 private fun DrawScope.drawWaterRipples(ui: GameUiState, vp: ViewportMapping) {
-    val rippleColor = ThemeColors.rippleColor(ui.riverTheme)
+    val rippleColor = ThemeColors.rippleColor(ui.riverTheme, ui.controlSettings.appTheme)
     val cx = size.width * 0.5f; val cy = size.height * 0.65f
     repeat(4) { i ->
         val t = i / 4f
@@ -687,12 +1027,24 @@ private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping, sprite
         val sz = Size(o.width * vp.scale * entryScale, o.height * vp.scale * entryScale)
         val center = Offset(tl.x + sz.width / 2f, tl.y + sz.height / 2f)
         val warningAlpha = o.warningHighlight.coerceIn(0f, 1f)
-        val themeAccent = when (ui.riverTheme) {
-            RiverTheme.FOREST -> Color(0xFF68C98A)
-            RiverTheme.ARCTIC -> Color(0xFFB7F0FF)
-            RiverTheme.VOLCANIC -> Color(0xFFFF9362)
-            RiverTheme.CRYSTAL -> Color(0xFFB48DFF)
-            RiverTheme.MIDNIGHT -> Color(0xFF7BD7FF)
+        val themeAccent = if (ui.controlSettings.appTheme == AppTheme.LIGHT) {
+            when (ui.riverTheme) {
+                RiverTheme.FOREST -> Color(0xFF1A7A4A)
+                RiverTheme.ARCTIC -> Color(0xFF1A5E7A)
+                RiverTheme.VOLCANIC -> Color(0xFFB3361B)
+                RiverTheme.CRYSTAL -> Color(0xFF651BCA)
+                RiverTheme.MIDNIGHT -> Color(0xFF1B2ECA)
+            }
+        } else if (ui.controlSettings.appTheme == AppTheme.AURORA) {
+            Color(0xFF3DFFA0)
+        } else {
+            when (ui.riverTheme) {
+                RiverTheme.FOREST -> Color(0xFF68C98A)
+                RiverTheme.ARCTIC -> Color(0xFFB7F0FF)
+                RiverTheme.VOLCANIC -> Color(0xFFFF9362)
+                RiverTheme.CRYSTAL -> Color(0xFFB48DFF)
+                RiverTheme.MIDNIGHT -> Color(0xFF7BD7FF)
+            }
         }
 
         when (ui.riverTheme) {
@@ -958,7 +1310,7 @@ private fun DrawScope.drawBoosts(boosts: List<BoostState>, vp: ViewportMapping) 
 @Composable
 private fun GameOverScreen(
     score: Int, highScore: Int, level: Int, obstaclesCleared: Int,
-    dropsEarned: Int, suggestion: String?,
+    dropsEarned: Int, totalDrops: Int, suggestion: String?,
     onNewRun: () -> Unit, onBackToMenu: () -> Unit, onShare: () -> Unit
 ) {
     val isNewHigh = score >= highScore && score > 0
@@ -997,6 +1349,9 @@ private fun GameOverScreen(
                         Text("+${animDrops.value.toInt()} River Drops", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
+                val startWallet = maxOf(0, totalDrops - dropsEarned)
+                val animWallet = startWallet + animDrops.value.toInt()
+                Text("Wallet Balance: \uD83D\uDCA7 $animWallet", style = MaterialTheme.typography.titleMedium, color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
                 suggestion?.let {
                     Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f)), shape = RoundedCornerShape(12.dp)) {
                         Text(it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = Color.White)
@@ -1101,7 +1456,14 @@ private fun BoxScope.IconHud(
 ) {
     val ts = (38f * iconScale).dp
     val is2 = (20f * iconScale).dp
-    val levelProgress = (obstaclesCleared % GameConstants.HURDLES_PER_LEVEL).toFloat() / GameConstants.HURDLES_PER_LEVEL.toFloat()
+    val hurdlesNeeded = when (difficultyLabel.lowercase()) {
+        "easy" -> 10
+        "normal" -> 8
+        "hard" -> 6
+        "extreme" -> 4
+        else -> 6
+    }
+    val levelProgress = (obstaclesCleared % hurdlesNeeded).toFloat() / hurdlesNeeded.toFloat()
     val animatedScore by animateIntAsState(score, label = "hudScore")
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1197,7 +1559,8 @@ private fun SettingsPanel(
     onCalibrate: () -> Unit, onClose: () -> Unit, onReset: () -> Unit,
     onMusicVolumeChanged: (Float) -> Unit, onSfxVolumeChanged: (Float) -> Unit, onHapticsChanged: (Boolean) -> Unit,
     onHapticIntensityChanged: (HapticIntensity) -> Unit,
-    onDifficultyChanged: (DifficultyPreset) -> Unit, onShowSpeedIndicatorChanged: (Boolean) -> Unit, onShowTrailEffectChanged: (Boolean) -> Unit
+    onDifficultyChanged: (DifficultyPreset) -> Unit, onShowSpeedIndicatorChanged: (Boolean) -> Unit, onShowTrailEffectChanged: (Boolean) -> Unit,
+    onTrailDensityChanged: (Float) -> Unit
 ) {
     var confirmReset by rememberSaveable { mutableStateOf(false) }
     Surface(Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(28.dp), tonalElevation = 8.dp, color = AppColors.backgroundDark) {
@@ -1277,6 +1640,9 @@ private fun SettingsPanel(
                 }
                 LabeledSwitch("Show speed indicator", settings.showSpeedIndicator, onShowSpeedIndicatorChanged)
                 LabeledSwitch("Show trail effect", settings.showTrailEffect, onShowTrailEffectChanged)
+                if (settings.showTrailEffect) {
+                    SettingsSlider("Trail Density ${(settings.trailDensity * 100f).toInt()}%", settings.trailDensity, 0.1f..1.0f, onTrailDensityChanged)
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onCalibrate) { Text("Calibrate") }

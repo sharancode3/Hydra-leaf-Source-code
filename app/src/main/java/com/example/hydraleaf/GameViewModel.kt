@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf
+package com.example.hydraleaf
 
 import android.app.Application
 import android.graphics.RectF
@@ -128,19 +128,24 @@ data class GameUiState(
     val dayPhase: DayPhase = DayPhase.DAY,
     val dayCycleProgress: Float = 0f,
     val trailParticles: List<TrailParticle> = emptyList(),
+    val trailPositions: List<android.graphics.PointF> = emptyList(),
     val leafBreathScale: Float = 1f,
     val leafLeanAngle: Float = 0f,
     val adaptiveDifficulty: AdaptiveDifficulty = AdaptiveDifficulty(),
     val dailyChallenge: DailyChallenge? = null,
+    val nearMissComboMultiplier: Int = 1,
+    val nearMissComboTimer: Float = 0f,
+    val nearMissFlashAlpha: Float = 0f,
     val runTime: Float = 0f,
     val fogAlpha: Float = 0f,
     val narrowChannelOffset: Float = 0f,
     val runDropsEarned: Int = 0,
     val sensitivitySuggestion: String? = null,
     val recentUnlock: AchievementType? = null,
-    val recentCelebration: String? = null
-    ,
-    val collectEffects: List<CollectEffectState> = emptyList()
+    val recentCelebration: String? = null,
+    val collectEffects: List<CollectEffectState> = emptyList(),
+    val challengeStreak: Int = 0,
+    val lastChallengeDayIndex: Int = -1
 ) {
     val gameState: GameState get() = when (phase) {
         GamePhase.PLAYING, GamePhase.COUNTDOWN, GamePhase.CALIBRATING -> GameState.RUNNING
@@ -149,7 +154,7 @@ data class GameUiState(
     }
 }
 
-data class CollectEffectState(val x: Float, val y: Float, val age: Float, val kind: String, val value: Int = 0)
+data class CollectEffectState(val x: Float, val y: Float, val age: Float, val kind: String, val value: Int = 0, val text: String? = null)
 
 enum class GameState { RUNNING, PAUSED, GAME_OVER }
 
@@ -170,7 +175,7 @@ private data class ObstacleEntity(
     var warningHighlight: Float = 0f, var warningTriggered: Boolean = false
 )
 
-    private data class CollectEffect(var x: Float, var y: Float, var age: Float = 0f, val kind: String = "boost", val value: Int = 0)
+    private data class CollectEffect(var x: Float, var y: Float, var age: Float = 0f, val kind: String = "boost", val value: Int = 0, val text: String? = null)
 
     private val activeCollectEffects = mutableListOf<CollectEffect>()
 
@@ -236,7 +241,13 @@ class GameViewModel @Inject constructor(
     // Particle trail
     private val trailParticles = mutableListOf<ParticleEntity>()
     private var trailSpawnAccum = 0f
+    private val trailPositions = mutableListOf<android.graphics.PointF>()
+    private var trailBufferAccumulator = 0f
+    private val isPausedRef = java.util.concurrent.atomic.AtomicBoolean(false)
     private var nearMissSfxCooldown = 0f
+    private var nearMissComboMultiplier = 1
+    private var nearMissComboTimer = 0f
+    private var nearMissFlashAlpha = 0f
 
     // Adaptive difficulty
     private val recentDodges = ArrayDeque<Boolean>()
@@ -250,6 +261,7 @@ class GameViewModel @Inject constructor(
     private var runDrops = 0
     private var tapSteerImpulse = 0f
     private var usedPowerUpsThisRun = 0
+    private var nearMissesThisRun = 0
     private var fogClearsThisRun = 0
     private var calmPointsThisRun = 0
     private var doubleRowsClearedThisRun = 0
@@ -307,6 +319,8 @@ class GameViewModel @Inject constructor(
         viewModelScope.launch { playerSettingsStore.totalDropsEverCollectedFlow.collectLatest { _uiState.value = _uiState.value.copy(totalDropsEverCollected = it) } }
         viewModelScope.launch { playerSettingsStore.totalCoinsFlow.collectLatest { _uiState.value = _uiState.value.copy(totalCoins = it) } }
         viewModelScope.launch { playerSettingsStore.dailyCoinsUsedFlow.collectLatest { _uiState.value = _uiState.value.copy(dailyCoinsClaimedToday = it) } }
+        viewModelScope.launch { playerSettingsStore.challengeStreakFlow.collectLatest { _uiState.value = _uiState.value.copy(challengeStreak = it) } }
+        viewModelScope.launch { playerSettingsStore.lastChallengeDayFlow.collectLatest { _uiState.value = _uiState.value.copy(lastChallengeDayIndex = it) } }
         viewModelScope.launch { playerSettingsStore.soundEnabledFlow.collectLatest { _uiState.value = _uiState.value.copy(soundEnabled = it); audioEngine.soundEnabled = it } }
         viewModelScope.launch { playerSettingsStore.tutorialSeenFlow.collectLatest { _uiState.value = _uiState.value.copy(showTutorial = !it) } }
         viewModelScope.launch { playerSettingsStore.riverDropsFlow.collectLatest { storedDrops = it; _uiState.value = _uiState.value.copy(totalRiverDrops = it) } }
@@ -333,6 +347,7 @@ class GameViewModel @Inject constructor(
     // ── Phase transitions ────────────────────────────────────────────────────
 
     fun startNewRun() {
+        isPausedRef.set(false)
         resetInternalState()
         _uiState.value = freshUiState().copy(
             phase = GamePhase.CALIBRATING,
@@ -363,14 +378,20 @@ class GameViewModel @Inject constructor(
         when (cur.phase) {
             GamePhase.PAUSED -> resumeFromPause()
             GamePhase.IDLE, GamePhase.GAME_OVER -> startNewRun()
-            else -> _uiState.value = cur.copy(phase = GamePhase.PLAYING, pauseOverlayVisible = false)
+            else -> {
+                isPausedRef.set(false)
+                _uiState.value = cur.copy(phase = GamePhase.PLAYING, pauseOverlayVisible = false)
+            }
         }
     }
 
     fun togglePause() {
         val cur = _uiState.value
         when (cur.phase) {
-            GamePhase.PLAYING -> _uiState.value = cur.copy(phase = GamePhase.PAUSED, pauseOverlayVisible = true)
+            GamePhase.PLAYING -> {
+                isPausedRef.set(true)
+                _uiState.value = cur.copy(phase = GamePhase.PAUSED, pauseOverlayVisible = true)
+            }
             GamePhase.PAUSED -> resumeFromPause()
             GamePhase.IDLE -> continueRun()
             else -> {}
@@ -381,12 +402,14 @@ class GameViewModel @Inject constructor(
     fun pauseForBackground() {
         val cur = _uiState.value
         if (cur.phase == GamePhase.PLAYING) {
+            isPausedRef.set(true)
             _uiState.value = cur.copy(phase = GamePhase.PAUSED, pauseOverlayVisible = true)
         }
     }
     fun resetGame() { startNewRun() }
 
     fun quitToMenu() {
+        isPausedRef.set(true)
         resetInternalState()
         _uiState.value = freshUiState().copy(
             phase = GamePhase.IDLE,
@@ -413,7 +436,6 @@ class GameViewModel @Inject constructor(
     private fun resumeFromPause() {
         val cur = _uiState.value
         if (cur.phase != GamePhase.PAUSED) return
-        // Start a resume countdown instead of immediately resuming gameplay
         transitionToCountdown()
     }
 
@@ -582,6 +604,7 @@ class GameViewModel @Inject constructor(
     fun setInstantSnap(v: Boolean) = viewModelScope.launch { playerSettingsStore.setInstantSnap(v) }
     fun setControlMode(m: ControlMode) = viewModelScope.launch { playerSettingsStore.setControlMode(m) }
     fun applyPreset(p: SensitivityPreset) = viewModelScope.launch { playerSettingsStore.applyPreset(p) }
+    fun setAppTheme(theme: AppTheme) = viewModelScope.launch { playerSettingsStore.setAppTheme(theme) }
     fun setDifficultyPreset(v: DifficultyPreset) = viewModelScope.launch { playerSettingsStore.setDifficultyPreset(v) }
     fun setMusicVolume(v: Float) = viewModelScope.launch { playerSettingsStore.setMusicVolume(v) ; audioEngine.musicVolume = v }
     // TODO-16 DONE: Settings slider calls setMusicVolume immediately to update MediaPlayer
@@ -595,6 +618,7 @@ class GameViewModel @Inject constructor(
     fun setShowNearMissFlash(v: Boolean) = viewModelScope.launch { playerSettingsStore.setShowNearMissFlash(v) }
     fun setHudOpacity(v: Float) = viewModelScope.launch { playerSettingsStore.setHudOpacity(v) }
     fun setParticleDensity(v: ParticleDensity) = viewModelScope.launch { playerSettingsStore.setParticleDensity(v) }
+    fun setTrailDensity(v: Float) = viewModelScope.launch { playerSettingsStore.setTrailDensity(v) }
     fun calibrate() = viewModelScope.launch {
         val values = recentTiltX.toList()
         if (values.size < 8) return@launch
@@ -615,6 +639,13 @@ class GameViewModel @Inject constructor(
         val challengeId = "${daily.type.name}:${daily.dayIndex}"
         val stored = playerSettingsStore.challengeProgressFlow.first().firstOrNull { it.challengeId == challengeId }
         if (stored?.claimed == true) return@launch
+        val today = daily.dayIndex
+        val newStreak = playerSettingsStore.incrementChallengeStreak(today)
+        val isBonus = newStreak > 0 && newStreak % 7 == 0
+        if (isBonus) {
+            playerSettingsStore.addRiverDrops(100)
+            playerSettingsStore.awardDailyChallengeCoins(2)
+        }
         val coinsAwarded = playerSettingsStore.awardDailyChallengeCoins(daily.type.rewardCoins)
         playerSettingsStore.addRiverDrops(daily.type.rewardDrops)
         playerSettingsStore.setDailyChallenge(daily.dayIndex, true)
@@ -627,10 +658,10 @@ class GameViewModel @Inject constructor(
                 claimed = true
             )
         )
-        val claimSummary = if (coinsAwarded > 0) {
-            "Claimed ${daily.type.rewardDrops} drops + $coinsAwarded coin(s)"
-        } else {
-            "Claimed ${daily.type.rewardDrops} drops (daily coin cap reached)"
+        val claimSummary = buildString {
+            append("Claimed ${daily.type.rewardDrops} drops")
+            if (coinsAwarded > 0) append(" + $coinsAwarded coin(s)")
+            if (isBonus) append(" (7-Day Bonus! +100 drops, +2 coins 🔥)")
         }
         showCelebration(claimSummary)
     }
@@ -640,20 +671,52 @@ class GameViewModel @Inject constructor(
     fun purchaseSkin(skin: LeafSkin) = viewModelScope.launch {
         if (playerSettingsStore.spendRiverDrops(skin.cost)) { playerSettingsStore.unlockSkin(skin); playerSettingsStore.setActiveSkin(skin) }
     }
-    fun purchaseSkinWithCelebration(skin: LeafSkin) = viewModelScope.launch {
-        if (playerSettingsStore.spendRiverDrops(skin.cost)) {
-            playerSettingsStore.unlockSkin(skin)
-            playerSettingsStore.setActiveSkin(skin)
-            showCelebration("Unlocked ${skin.displayName}")
+    fun purchaseSkinWithCelebration(skin: LeafSkin, coinCost: Int = 0) = viewModelScope.launch {
+        val drops = playerSettingsStore.riverDropsFlow.first()
+        val coins = playerSettingsStore.totalCoinsFlow.first()
+        if (coins >= coinCost && drops >= skin.cost) {
+            if (playerSettingsStore.spendCoins(coinCost)) {
+                if (playerSettingsStore.spendRiverDrops(skin.cost)) {
+                    playerSettingsStore.unlockSkin(skin)
+                    playerSettingsStore.setActiveSkin(skin)
+                    showCelebration("Unlocked ${skin.displayName}")
+                } else {
+                    playerSettingsStore.addCoins(coinCost)
+                }
+            }
         }
     }
     fun selectSkin(skin: LeafSkin) = viewModelScope.launch { playerSettingsStore.setActiveSkin(skin) }
-    fun purchaseTrailSkin(trailSkin: TrailSkin) = viewModelScope.launch {
-        if (playerSettingsStore.spendRiverDrops(trailSkin.cost)) { playerSettingsStore.unlockTrailSkin(trailSkin); playerSettingsStore.setActiveTrailSkin(trailSkin) }
+    fun purchaseTrailSkin(trailSkin: TrailSkin, coinCost: Int = 0) = viewModelScope.launch {
+        val drops = playerSettingsStore.riverDropsFlow.first()
+        val coins = playerSettingsStore.totalCoinsFlow.first()
+        if (coins >= coinCost && drops >= trailSkin.cost) {
+            if (playerSettingsStore.spendCoins(coinCost)) {
+                if (playerSettingsStore.spendRiverDrops(trailSkin.cost)) {
+                    playerSettingsStore.unlockTrailSkin(trailSkin)
+                    playerSettingsStore.setActiveTrailSkin(trailSkin)
+                    showCelebration("Unlocked ${trailSkin.displayName}")
+                } else {
+                    playerSettingsStore.addCoins(coinCost)
+                }
+            }
+        }
     }
     fun selectTrailSkin(trailSkin: TrailSkin) = viewModelScope.launch { playerSettingsStore.setActiveTrailSkin(trailSkin) }
-    fun purchaseTheme(theme: RiverTheme) = viewModelScope.launch {
-        if (playerSettingsStore.spendRiverDrops(theme.cost)) { playerSettingsStore.unlockTheme(theme); playerSettingsStore.setActiveTheme(theme); showCelebration("Unlocked ${theme.displayName}") }
+    fun purchaseTheme(theme: RiverTheme, coinCost: Int = 0) = viewModelScope.launch {
+        val drops = playerSettingsStore.riverDropsFlow.first()
+        val coins = playerSettingsStore.totalCoinsFlow.first()
+        if (coins >= coinCost && drops >= theme.cost) {
+            if (playerSettingsStore.spendCoins(coinCost)) {
+                if (playerSettingsStore.spendRiverDrops(theme.cost)) {
+                    playerSettingsStore.unlockTheme(theme)
+                    playerSettingsStore.setActiveTheme(theme)
+                    showCelebration("Unlocked ${theme.displayName}")
+                } else {
+                    playerSettingsStore.addCoins(coinCost)
+                }
+            }
+        }
     }
     fun selectTheme(theme: RiverTheme) = viewModelScope.launch { playerSettingsStore.setActiveTheme(theme) }
 
@@ -697,10 +760,10 @@ class GameViewModel @Inject constructor(
         if (deltaTime <= 0f || deltaTime > 0.25f) return
 
         val cur = _uiState.value
-        if (cur.phase != GamePhase.PLAYING) {
+        if (isPausedRef.get() || cur.phase != GamePhase.PLAYING) {
             val tx = mapTiltToTargetX(tiltSample.rawX, cur.controlSettings)
             val ty = mapTiltToTargetY(tiltSample.rawY, cur.controlSettings)
-            _uiState.value = cur.copy(targetX = tx, targetY = ty, lastTiltSample = tiltSample, lastDeltaTime = deltaTime)
+            _uiState.value = _uiState.value.copy(targetX = tx, targetY = ty, lastTiltSample = tiltSample, lastDeltaTime = deltaTime)
             return
         }
 
@@ -780,6 +843,9 @@ class GameViewModel @Inject constructor(
             entry.setValue(entry.value - dt)
             if (entry.value <= 0f) { expiredPowerUps.add(entry.key); true } else false
         }
+        if (expiredPowerUps.isNotEmpty()) {
+            audioEngine.playBoosterExpire()
+        }
         val activePowerUpList = activePowerUpTimers.map { (t, rem) -> ActivePowerUp(t, rem, t.durationSec) }
 
         // ── Power-up spawning ────────────────────────────────────────────────
@@ -856,6 +922,12 @@ class GameViewModel @Inject constructor(
 
         updatePowerUps(effectiveDt, leafRect, magnetActive)
         nearMissSfxCooldown = max(0f, nearMissSfxCooldown - effectiveDt)
+        nearMissComboTimer = max(0f, nearMissComboTimer - dt)
+        if (nearMissComboTimer <= 0f) {
+            nearMissComboMultiplier = 1
+        }
+        nearMissFlashAlpha = max(0f, nearMissFlashAlpha - dt * 5f)
+
         // Update obstacles
         val obstResult = updateObstacles(effectiveDt, leafRect, cur.level, cur.score, speedMult, cur.difficultyPreset)
         if (obstResult.collided && shieldActive) {
@@ -863,14 +935,27 @@ class GameViewModel @Inject constructor(
             audioEngine.playShieldBreak()
         }
         val collided = obstResult.collided && !boostActive && !shieldActive
+        if (collided) {
+            nearMissComboMultiplier = 1
+            nearMissComboTimer = 0f
+        }
 
         // ── Scoring ──────────────────────────────────────────────────────────
         val doublePoints = activePowerUpTimers.containsKey(PowerUpType.DOUBLE_POINTS)
         val pointsMul = if (doublePoints) 2 else 1
-        val newScore = cur.score + obstResult.pointsEarned * pointsMul
+        val newScore = cur.score + obstResult.pointsEarned * pointsMul * nearMissComboMultiplier
         val clearedTotal = cur.obstaclesCleared + obstResult.cleared
-        val newLevel = 1 + clearedTotal / GameConstants.HURDLES_PER_LEVEL
-        if (newLevel > cur.level) audioEngine.playLevelUp()
+        val hurdlesNeeded = when (cur.difficultyPreset) {
+            DifficultyPreset.EASY -> 10
+            DifficultyPreset.NORMAL -> 8
+            DifficultyPreset.HARD -> 6
+            DifficultyPreset.EXTREME -> 4
+        }
+        val newLevel = 1 + clearedTotal / hurdlesNeeded
+        if (newLevel > cur.level) {
+            audioEngine.playLevelUp()
+            activeObstacles.clear()
+        }
         runDrops += obstResult.cleared * GameConstants.DROPS_PER_CLEAR
         if (obstResult.cleared > 0) {
             // spawn small drop collect effects around the leaf to indicate earned River Drops
@@ -917,6 +1002,21 @@ class GameViewModel @Inject constructor(
         }
         val pIter = trailParticles.iterator()
         while (pIter.hasNext()) { val p = pIter.next(); p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.life <= 0f) pIter.remove() }
+
+        // ── Rolling buffer trail ─────────────────────────────────────────────
+        if (settings.showTrailEffect) {
+            trailBufferAccumulator += dt
+            val recordInterval = 0.05f / (settings.trailDensity.coerceIn(0.1f, 1f))
+            if (trailBufferAccumulator >= recordInterval) {
+                trailBufferAccumulator = 0f
+                trailPositions.add(android.graphics.PointF(leafX, leafY))
+                while (trailPositions.size > 18) {
+                    trailPositions.removeAt(0)
+                }
+            }
+        } else {
+            trailPositions.clear()
+        }
         // update collect effects
         val ceIter = activeCollectEffects.iterator()
         while (ceIter.hasNext()) {
@@ -953,13 +1053,13 @@ class GameViewModel @Inject constructor(
             controlMode = settings.controlMode.name
         )
 
-        _uiState.value = cur.copy(
+        _uiState.value = _uiState.value.copy(
             leafX = leafX, leafY = leafY, leafVelocityX = vx, leafVelocityY = vy,
             targetX = targetX, targetY = targetY,
             obstacles = activeObstacles.map { o -> ObstacleState(o.id, o.x, o.y, o.width, o.height, o.warningHighlight, o.kind, o.style, o.pattern, o.variant, o.driftPhase, o.entryAge.coerceIn(0f, 0.3f) / 0.3f) },
             score = newScore, highScore = highScore,
             obstaclesCleared = clearedTotal, level = newLevel,
-            phase = if (collided) cur.phase else GamePhase.PLAYING,
+            phase = if (collided) GamePhase.DEAD else _uiState.value.phase,
             lastTiltSample = tiltSample, lastDeltaTime = dt,
             debugTelemetry = debugTelemetry,
             boosts = activeBoosts.map { BoostState(it.id, it.x, it.y, it.radius, it.kind, (it.age / 0.4f).coerceIn(0f, 1f)) },
@@ -970,7 +1070,11 @@ class GameViewModel @Inject constructor(
             riverDrops = runDrops,
             dayPhase = dayPhase, dayCycleProgress = dayProgress,
             trailParticles = trailParticles.map { TrailParticle(it.x, it.y, it.life / it.maxLife, it.size, (it.life / it.maxLife).coerceIn(0f, 1f)) },
-            collectEffects = activeCollectEffects.map { CollectEffectState(it.x, it.y, it.age, it.kind, it.value) },
+            trailPositions = trailPositions.toList(),
+            collectEffects = activeCollectEffects.map { CollectEffectState(it.x, it.y, it.age, it.kind, it.value, it.text) },
+            nearMissComboMultiplier = nearMissComboMultiplier,
+            nearMissComboTimer = nearMissComboTimer,
+            nearMissFlashAlpha = nearMissFlashAlpha,
             leafBreathScale = breathScale, leafLeanAngle = leanAngle,
             adaptiveDifficulty = adaptiveDiff,
             runTime = runTime, fogAlpha = fogAlpha, narrowChannelOffset = narrowOffset
@@ -1069,8 +1173,11 @@ class GameViewModel @Inject constructor(
                     audioEngine.playNearMiss()
                     nearMissSfxCooldown = GameConstants.NEAR_MISS_SFX_COOLDOWN
                     if (_settings.value.showNearMissFlash) {
-                        o.warningHighlight = 1f
+                        nearMissFlashAlpha = 0.6f
                     }
+                    nearMissComboMultiplier = Math.min(3, nearMissComboMultiplier + 1)
+                    nearMissComboTimer = 3f
+                    nearMissesThisRun++
                 }
                 audioEngine.playDodge(Random.nextInt(5))
                 // spawn a score popup effect at the obstacle position
@@ -1236,7 +1343,7 @@ class GameViewModel @Inject constructor(
             if (!collected && circleIntersectsRect(b.x, b.y, b.radius, leafRect)) {
                 collected = true; b.collected = true; audioEngine.playCollect()
                 // spawn a short-lived collect effect for VFX
-                activeCollectEffects.add(CollectEffect(b.x, b.y, 0f, "boost"))
+                activeCollectEffects.add(CollectEffect(b.x, b.y, 0f, "boost", 0, "+${b.kind.displayName}"))
             }
             if (b.collected || b.y - b.radius > GameConstants.VIRTUAL_HEIGHT + 80f) { iter.remove(); b.collected = false; boostPool.addLast(b) }
         }
@@ -1271,9 +1378,18 @@ class GameViewModel @Inject constructor(
                 activePowerUpTimers[p.type] = p.type.durationSec
                 runDrops += GameConstants.DROPS_PER_POWERUP
                 usedPowerUpsThisRun += 1
-                audioEngine.playPowerUp()
-                // spawn collect effect for power-up
-                activeCollectEffects.add(CollectEffect(p.x, p.y, 0f, "powerup"))
+                
+                val typeName = when (p.type) {
+                    PowerUpType.SPEED_BOOST -> "speed"
+                    PowerUpType.SHIELD -> "shield"
+                    PowerUpType.MAGNET -> "magnet"
+                    else -> p.type.name.lowercase()
+                }
+                audioEngine.playBoosterPickup(typeName)
+                audioEngine.playBoosterActivate(typeName)
+                
+                val label = "+${p.type.displayName.uppercase()} ${p.type.icon}"
+                activeCollectEffects.add(CollectEffect(p.x, p.y, 0f, "powerup", 0, label))
             }
             if (p.collected || p.y - p.radius > GameConstants.VIRTUAL_HEIGHT + 80f) { iter.remove(); powerUpPool.addLast(p) }
         }
@@ -1314,6 +1430,8 @@ class GameViewModel @Inject constructor(
         ChallengeType.FOG_ONLY -> 20
         ChallengeType.DOUBLE_HURDLES -> 30
         ChallengeType.CALM_ONLY -> 300
+        ChallengeType.PERFECT_RUN -> 100
+        ChallengeType.DROP_HUNTER -> 50
     }
 
     private fun currentChallengeProgress(type: ChallengeType, score: Int): Int = when (type) {
@@ -1322,6 +1440,8 @@ class GameViewModel @Inject constructor(
         ChallengeType.FOG_ONLY -> min(fogClearsThisRun, 20)
         ChallengeType.DOUBLE_HURDLES -> min(doubleRowsClearedThisRun, 30)
         ChallengeType.CALM_ONLY -> min(calmPointsThisRun, 300)
+        ChallengeType.PERFECT_RUN -> if (nearMissesThisRun == 0) min(score, 100) else 0
+        ChallengeType.DROP_HUNTER -> min(runDrops, 50)
     }
 
     // ── Sensitivity auto-tune suggestion ─────────────────────────────────────
@@ -1344,6 +1464,9 @@ class GameViewModel @Inject constructor(
         activePowerUpEntities.clear(); powerUpPool.clear()
         activePowerUpTimers.clear()
         trailParticles.clear(); trailSpawnAccum = 0f
+        trailPositions.clear(); trailBufferAccumulator = 0f
+        nearMissComboMultiplier = 1; nearMissComboTimer = 0f; nearMissFlashAlpha = 0f
+        nearMissesThisRun = 0
         recentDodges.clear(); adaptiveDiff = AdaptiveDifficulty()
         currentEvent = null
         eventTimer = GameConstants.EVENT_MIN_INTERVAL + Random.nextFloat() * (GameConstants.EVENT_MAX_INTERVAL - GameConstants.EVENT_MIN_INTERVAL)

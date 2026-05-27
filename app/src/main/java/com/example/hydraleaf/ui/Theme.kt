@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf.ui
+package com.example.hydraleaf.ui
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -15,40 +15,54 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import com.example.hydraleaf.AppTheme
 
 // Nature-teal palette
 val Teal50  = Color(0xFFE0F7F1)
 val Teal100 = Color(0xFFB2EBD6)
 val Teal200 = Color(0xFF80DFBB)
-val Teal400 = AppColors.primaryGreen
+val Teal400 = Color(0xFF2ECC9A)
 val Teal600 = Color(0xFF00A87B)
 val Teal700 = Color(0xFF009A6E)
 val Teal900 = Color(0xFF00634A)
 
-private val DarkColorScheme = darkColorScheme(
-    primary         = AppColors.primaryGreen,
+private val DarkThemeColorScheme = darkColorScheme(
+    primary         = Color(0xFF3DFFA0),
     onPrimary       = Color.Black,
-    primaryContainer = Teal900,
-    secondary       = Teal200,
-    background      = AppColors.backgroundDark,
-    surface         = AppColors.backgroundCard,
+    primaryContainer = Color(0xFF0D2B1E),
+    secondary       = Color(0xFF3DFFA0),
+    background      = Color(0xFF0D2B1E),
+    surface         = Color(0xFF163E2C),
     surfaceVariant  = Color(0xFF1B3A33),
-    onBackground    = AppColors.textPrimary,
-    onSurface       = AppColors.textPrimary,
-    onSurfaceVariant = AppColors.textMuted
+    onBackground    = Color.White,
+    onSurface       = Color.White,
+    onSurfaceVariant = Color(0xFF7FA692)
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary         = Teal600,
+private val LightThemeColorScheme = lightColorScheme(
+    primary         = Color(0xFF1A7A4A),
     onPrimary       = Color.White,
-    primaryContainer = Teal100,
-    secondary       = Teal700,
-    background      = Color(0xFFF4FBF8),
-    surface         = Color.White,
-    surfaceVariant  = Teal50,
-    onBackground    = Color(0xFF1C1B1F),
-    onSurface       = Color(0xFF1C1B1F),
-    onSurfaceVariant = Color(0xFF4A635C)
+    primaryContainer = Color(0xFFEAE4D9),
+    secondary       = Color(0xFF1A7A4A),
+    background      = Color(0xFFF5F0E8),
+    surface         = Color(0xFFEAE4D9),
+    surfaceVariant  = Color(0xFFEAE4D9),
+    onBackground    = Color(0xFF1A2E1F),
+    onSurface       = Color(0xFF1A2E1F),
+    onSurfaceVariant = Color(0xFF5C6B5E)
+)
+
+private val AuroraThemeColorScheme = darkColorScheme(
+    primary         = Color(0xFF7B61FF),
+    onPrimary       = Color.White,
+    primaryContainer = Color(0xFF1C1354),
+    secondary       = Color(0xFF3DFFA0),
+    background      = Color(0xFF0F0A2E),
+    surface         = Color(0xFF1C1354),
+    surfaceVariant  = Color(0xFF221A64),
+    onBackground    = Color.White,
+    onSurface       = Color.White,
+    onSurfaceVariant = Color(0xFF9E95D3)
 )
 
 private val HydraTypography = Typography(
@@ -65,10 +79,15 @@ private val HydraTypography = Typography(
 
 @Composable
 fun HydraLeafTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    theme: AppTheme = AppTheme.DARK,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    AppColors.updateTheme(theme)
+    val colorScheme = when (theme) {
+        AppTheme.DARK -> DarkThemeColorScheme
+        AppTheme.LIGHT -> LightThemeColorScheme
+        AppTheme.AURORA -> AuroraThemeColorScheme
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -76,7 +95,8 @@ fun HydraLeafTheme(
             val window = (view.context as? Activity)?.window ?: return@SideEffect
             window.statusBarColor = Color.Transparent.toArgb()
             window.navigationBarColor = Color.Black.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            val isLight = theme == AppTheme.LIGHT
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = isLight
         }
     }
 

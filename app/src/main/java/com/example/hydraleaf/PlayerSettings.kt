@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf
+package com.example.hydraleaf
 
 // ── Control ──────────────────────────────────────────────────────────────────
 enum class ControlMode { GYROSCOPE, TOUCH, TAP }
@@ -104,6 +104,8 @@ data class AchievementProgress(
 enum class HurdleStyle { WOOD, STONE, ICE, LILY_PAD }
 
 // ── Day / Night Cycle ────────────────────────────────────────────────────────
+enum class AppTheme(val displayName: String) { DARK("Dark"), LIGHT("Light"), AURORA("Aurora") }
+
 enum class DayPhase { DAWN, DAY, DUSK, NIGHT }
 
 // ── Daily Challenges ─────────────────────────────────────────────────────────
@@ -112,7 +114,9 @@ enum class ChallengeType(val description: String, val rewardDrops: Int, val rewa
     SPEED_RUN("Score 500 in under 90 s", 150, 1),
     FOG_ONLY("Clear 20 hurdles in fog", 120, 2),
     DOUBLE_HURDLES("Survive 30 double-row hurdles", 200, 3),
-    CALM_ONLY("Score 300 during Calm Waters", 100, 1)
+    CALM_ONLY("Score 300 during Calm Waters", 100, 1),
+    PERFECT_RUN("Score 100 with zero near-misses", 150, 2),
+    DROP_HUNTER("Collect 50 drops in a single run", 120, 1)
 }
 
 // ── Control Defaults ─────────────────────────────────────────────────────────
@@ -155,7 +159,9 @@ data class ControlSettings(
     val showTrailEffect: Boolean = true,
     val showNearMissFlash: Boolean = true,
     val hudOpacity: Float = 0.9f,
-    val particleDensity: ParticleDensity = ParticleDensity.MEDIUM
+    val particleDensity: ParticleDensity = ParticleDensity.MEDIUM,
+    val appTheme: AppTheme = AppTheme.DARK,
+    val trailDensity: Float = 0.5f
 )
 
 // ── Active power-up state ────────────────────────────────────────────────────

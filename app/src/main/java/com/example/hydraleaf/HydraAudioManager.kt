@@ -61,4 +61,11 @@ class HydraAudioManager(
     fun playNearMiss() = engine.playNearMiss()
     fun playShieldBreak() = engine.playShieldBreak()
     fun playLevelUp() = engine.playLevelUp()
+    fun playBoosterPickup(type: String) = engine.playBoosterPickup(type)
+    fun playBoosterActivate(type: String) = engine.playBoosterActivate(type)
+    fun playBoosterExpire() = engine.playBoosterExpire()
+    fun playCollision() = engine.playCollision()
+    fun playMenuTap() = engine.playMenuTap()
+    fun playDailyComplete() = engine.playDailyComplete()
+    fun playPurchase() = engine.playPurchase()
 }

@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf
+package com.example.hydraleaf
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -39,7 +39,9 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
             showTrailEffect = p[TRAIL_EFFECT_KEY] ?: true,
             showNearMissFlash = p[NEAR_MISS_FLASH_KEY] ?: true,
             hudOpacity = p[HUD_OPACITY_KEY] ?: 0.9f,
-            particleDensity = p[PARTICLE_DENSITY_KEY]?.let { runCatching { ParticleDensity.valueOf(it) }.getOrNull() } ?: ParticleDensity.MEDIUM
+            particleDensity = p[PARTICLE_DENSITY_KEY]?.let { runCatching { ParticleDensity.valueOf(it) }.getOrNull() } ?: ParticleDensity.MEDIUM,
+            appTheme = p[APP_THEME_KEY]?.let { runCatching { AppTheme.valueOf(it) }.getOrNull() } ?: AppTheme.DARK,
+            trailDensity = p[TRAIL_DENSITY_KEY] ?: 0.5f
         )
     }
 
@@ -109,6 +111,8 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
     val challengeProgressFlow: Flow<List<ChallengeProgress>> = dataStore.data.map { prefs ->
         parseChallengeProgressList(prefs[CHALLENGE_PROGRESS_KEY])
     }
+    val challengeStreakFlow: Flow<Int> = dataStore.data.map { it[CHALLENGE_STREAK_KEY] ?: 0 }
+    val lastChallengeDayFlow: Flow<Int> = dataStore.data.map { it[LAST_CHALLENGE_DAY_KEY] ?: -1 }
 
     // ── Boosters (levels stored as JSON map) ─────────────────────────────────
     val boosterLevelsFlow: Flow<Map<String, Int>> = dataStore.data.map { prefs ->
@@ -151,6 +155,8 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
     suspend fun setShowNearMissFlash(v: Boolean)     { dataStore.edit { it[NEAR_MISS_FLASH_KEY] = v } }
     suspend fun setHudOpacity(v: Float)             { dataStore.edit { it[HUD_OPACITY_KEY] = v.coerceIn(0.3f, 1f) } }
     suspend fun setParticleDensity(v: ParticleDensity) { dataStore.edit { it[PARTICLE_DENSITY_KEY] = v.name } }
+    suspend fun setAppTheme(v: AppTheme)            { dataStore.edit { it[APP_THEME_KEY] = v.name } }
+    suspend fun setTrailDensity(v: Float)           { dataStore.edit { it[TRAIL_DENSITY_KEY] = v } }
 
     // ── Currency ─────────────────────────────────────────────────────────────
     suspend fun addRiverDrops(amount: Int) {
@@ -244,6 +250,24 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[DAILY_DAY_KEY] = day; it[DAILY_DONE_KEY] = completed }
     }
 
+    suspend fun incrementChallengeStreak(todayDayIndex: Int): Int {
+        var newStreak = 1
+        dataStore.edit { prefs ->
+            val lastDay = prefs[LAST_CHALLENGE_DAY_KEY] ?: -1
+            val currentStreak = prefs[CHALLENGE_STREAK_KEY] ?: 0
+            if (lastDay == todayDayIndex - 1) {
+                newStreak = currentStreak + 1
+            } else if (lastDay == todayDayIndex) {
+                newStreak = currentStreak
+            } else {
+                newStreak = 1
+            }
+            prefs[LAST_CHALLENGE_DAY_KEY] = todayDayIndex
+            prefs[CHALLENGE_STREAK_KEY] = newStreak
+        }
+        return newStreak
+    }
+
     suspend fun awardDailyChallengeCoins(maxCoins: Int): Int {
         var awarded = 0
         dataStore.edit { prefs ->
@@ -316,6 +340,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
             prefs[NEAR_MISS_FLASH_KEY] = true
             prefs[HUD_OPACITY_KEY]   = 0.9f
             prefs[PARTICLE_DENSITY_KEY] = ParticleDensity.MEDIUM.name
+            prefs[APP_THEME_KEY]     = AppTheme.DARK.name
             prefs[BOOSTER_LEVELS_KEY] = org.json.JSONObject().toString()
         }
     }
@@ -413,6 +438,8 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
         val SPEED_INDICATOR_KEY = booleanPreferencesKey("show_speed_indicator")
         val TRAIL_EFFECT_KEY  = booleanPreferencesKey("show_trail_effect")
         val NEAR_MISS_FLASH_KEY = booleanPreferencesKey("show_near_miss_flash")
+        val APP_THEME_KEY      = stringPreferencesKey("app_theme")
+        val TRAIL_DENSITY_KEY  = floatPreferencesKey("trail_density")
         val HUD_OPACITY_KEY    = floatPreferencesKey("hud_opacity")
         val PARTICLE_DENSITY_KEY = stringPreferencesKey("particle_density")
         val DROPS_KEY         = intPreferencesKey("river_drops")
@@ -433,6 +460,8 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
         val DAILY_COINS_DAY_KEY = intPreferencesKey("daily_coin_day")
         val DAILY_COINS_USED_KEY = intPreferencesKey("daily_coin_used")
         val CHALLENGE_PROGRESS_KEY = stringPreferencesKey("challenge_progress_json")
+        val CHALLENGE_STREAK_KEY = intPreferencesKey("challenge_streak")
+        val LAST_CHALLENGE_DAY_KEY = intPreferencesKey("last_challenge_day")
         val RUN_HISTORY_KEY   = stringPreferencesKey("run_history")
         val BOOSTER_LEVELS_KEY = stringPreferencesKey("booster_levels")
         val ACHIEVEMENTS_KEY  = stringPreferencesKey("achievements")
