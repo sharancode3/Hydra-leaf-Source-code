@@ -542,6 +542,22 @@ private fun HomeScreen(
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = AppColors.primaryGreen, modifier = Modifier.size(20.dp))
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                val uri = android.net.Uri.parse("upi://pay?pa=sharan77@ptyes")
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "No UPI app found", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.primaryGreen),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Pay via UPI")
+                    }
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }

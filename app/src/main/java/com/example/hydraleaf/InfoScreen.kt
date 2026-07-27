@@ -132,17 +132,6 @@ fun InfoScreen(onBack: () -> Unit) {
                     Icon(painter = painterResource(id = R.drawable.ic_gmail), contentDescription = "Email", tint = AppColors.accentTeal)
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/sharancode3/Hydra-leaf-apk/releases"))
-                    context.startActivity(intent)
-                },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.textPrimary)
-            ) {
-                Text("GitHub Releases")
-            }
-            
             Spacer(modifier = Modifier.height(40.dp))
             
             // 5. Support the Developer
@@ -168,14 +157,35 @@ fun InfoScreen(onBack: () -> Unit) {
                         color = AppColors.textMuted,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    OutlinedButton(
-                        onClick = { showQrSheet = true },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.accentTeal),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.accentTeal)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Text("Show QR Code")
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    val uri = Uri.parse("upi://pay?pa=sharan77@ptyes")
+                                    val intent = Intent(Intent.ACTION_VIEW, uri)
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "No UPI app found", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.primaryGreen),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.primaryGreen),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Pay via UPI")
+                        }
+                        
+                        OutlinedButton(
+                            onClick = { showQrSheet = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.accentTeal),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.accentTeal),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Show QR Code")
+                        }
                     }
                 }
             }
