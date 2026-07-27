@@ -1,6 +1,12 @@
 package com.example.hydraleaf
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -30,21 +36,19 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import androidx.compose.ui.geometry.Offset
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -58,6 +62,9 @@ import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -121,9 +128,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.hydraleaf.ui.AppColors
-import android.widget.Toast
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Tab
@@ -146,7 +154,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 
-enum class HydraLeafDestination { HOME, GAME, SHOP, CHALLENGES, LEADERBOARD, SETTINGS, GAME_INFO }
+enum class HydraLeafDestination { HOME, GAME, SHOP, CHALLENGES, LEADERBOARD, SETTINGS, GAME_INFO, INFO }
 
 @Composable
 fun HydraLeafApp(viewModel: GameViewModel) {
@@ -183,6 +191,7 @@ fun HydraLeafApp(viewModel: GameViewModel) {
                         onOpenLeaderboard = { destination = HydraLeafDestination.LEADERBOARD },
                         onDifficultySelected = { viewModel.setDifficultyPreset(it) },
                         onControlModeSelected = { viewModel.setControlMode(it) },
+                        onOpenInfo = { destination = HydraLeafDestination.INFO }
                     )
 
                     HydraLeafDestination.GAME -> LeafGameScreen(
@@ -197,7 +206,10 @@ fun HydraLeafApp(viewModel: GameViewModel) {
                         ShopScreen(viewModel) { destination = HydraLeafDestination.HOME }
                     }
                     HydraLeafDestination.CHALLENGES -> LazyScreen(uiState.controlSettings.appTheme) {
-                        ChallengesScreen(viewModel, uiState, onBack = { destination = HydraLeafDestination.HOME }, onStartRun = { destination = HydraLeafDestination.GAME })
+                        ChallengesScreen(viewModel, uiState, onBack = { destination = HydraLeafDestination.HOME }, onStartRun = { 
+                            viewModel.startNewRun()
+                            destination = HydraLeafDestination.GAME 
+                        })
                     }
                     HydraLeafDestination.LEADERBOARD -> LazyScreen(uiState.controlSettings.appTheme) {
                         LeaderboardScreen(uiState) { destination = HydraLeafDestination.HOME }
@@ -224,6 +236,11 @@ fun HydraLeafApp(viewModel: GameViewModel) {
 
                     HydraLeafDestination.GAME_INFO -> GameInfoScreen(
                         appTheme = uiState.controlSettings.appTheme,
+                        showHitboxDebug = uiState.showHitboxDebug,
+                        onToggleHitboxDebug = { viewModel.toggleHitboxDebug() },
+                        onBack = { destination = HydraLeafDestination.HOME }
+                    )
+                    HydraLeafDestination.INFO -> InfoScreen(
                         onBack = { destination = HydraLeafDestination.HOME }
                     )
                 }
@@ -305,12 +322,14 @@ private fun HomeScreen(
     onOpenLeaderboard: () -> Unit,
     onDifficultySelected: (DifficultyPreset) -> Unit,
     onControlModeSelected: (ControlMode) -> Unit,
+    onOpenInfo: () -> Unit,
 ) {
     val safePadding = WindowInsets.safeDrawing.asPaddingValues()
     val showContinue = uiState.phase == GamePhase.PLAYING || uiState.phase == GamePhase.IDLE
     val primaryLabel = if (uiState.score > 0 && showContinue) "Continue" else "Play"
     var selectedDifficulty by rememberSaveable(uiState.difficultyPreset) { mutableStateOf(uiState.difficultyPreset) }
     var selectedSheet by rememberSaveable { mutableStateOf<HomeStatSheet?>(null) }
+    var showSupportSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     LaunchedEffect(uiState.difficultyPreset) { selectedDifficulty = uiState.difficultyPreset }
     val shimmer = rememberInfiniteTransition(label = "homeShimmer")
@@ -371,7 +390,16 @@ private fun HomeScreen(
                                 StatCell("HIGH SCORE", uiState.highScore.toString(), StatGlyph.HIGH_SCORE),
                                 StatCell("LAST", uiState.lastScore.toString(), StatGlyph.LAST),
                                 StatCell("GAMES", uiState.totalGamesPlayed.toString(), StatGlyph.GAMES),
-                                StatCell("LEVEL", uiState.level.toString(), StatGlyph.LEVEL),
+                                StatCell(
+                                    "BEST TIME",
+                                    run {
+                                        val bestSurvivalSec = (uiState.bestSurvivalTime / 1000).toInt()
+                                        val bm = bestSurvivalSec / 60
+                                        val bs = bestSurvivalSec % 60
+                                        String.format("%02d:%02d", bm, bs)
+                                    },
+                                    StatGlyph.LEVEL
+                                ),
                                 StatCell("DROPS", uiState.totalRiverDrops.toString(), StatGlyph.DROPS),
                                 StatCell("MODE", uiState.controlSettings.controlMode.name, StatGlyph.MODE),
                                 StatCell("SKIN", uiState.leafSkin.displayName, StatGlyph.SKIN),
@@ -411,17 +439,16 @@ private fun HomeScreen(
                 }
 
                 OutlinedButton(
-                    onNewRun,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, Brush.linearGradient(listOf(AppColors.accentTeal, AppColors.primaryGreen)))
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Quick Play", color = AppColors.textPrimary, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text("Start fresh run with current settings", style = MaterialTheme.typography.bodySmall, color = AppColors.textMuted, textAlign = TextAlign.Center)
+                        onNewRun,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, Brush.linearGradient(listOf(AppColors.accentTeal, AppColors.primaryGreen)))
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Quick Play", color = AppColors.textPrimary, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            Text("Start fresh run with current settings", style = MaterialTheme.typography.bodySmall, color = AppColors.textMuted, textAlign = TextAlign.Center)
+                        }
                     }
-                }
-
                 Card(
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard.copy(alpha = 0.72f)),
@@ -441,6 +468,19 @@ private fun HomeScreen(
                         }
                     }
                 }
+                
+                // Support the developer button
+                OutlinedButton(
+                    onClick = { showSupportSheet = true },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Brush.linearGradient(listOf(AppColors.accentTeal, AppColors.primaryGreen)))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Support the Developer", color = AppColors.textPrimary, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text("Add a tip via UPI or follow me", style = MaterialTheme.typography.bodySmall, color = AppColors.textMuted, textAlign = TextAlign.Center)
+                    }
+                }
             }
         }
 
@@ -455,6 +495,55 @@ private fun HomeScreen(
                     },
                     onClose = { selectedSheet = null }
                 )
+            }
+        }
+
+        if (showSupportSheet) {
+            ModalBottomSheet(onDismissRequest = { showSupportSheet = false }, sheetState = sheetState, containerColor = AppColors.backgroundCard) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Connect With Me", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("If you find any bugs or issues feel free to update and reach out to my gmail.", style = MaterialTheme.typography.bodySmall, color = AppColors.textMuted, textAlign = TextAlign.Center)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    val context = LocalContext.current
+                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://instagram.com/sharans7_"))) }) {
+                            Icon(painter = painterResource(id = R.drawable.ic_instagram), contentDescription = "Instagram", tint = AppColors.accentTeal)
+                        }
+                        IconButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.linkedin.com/in/sharan-s7/"))) }) {
+                            Icon(painter = painterResource(id = R.drawable.ic_linkedin), contentDescription = "LinkedIn", tint = AppColors.primaryGreen)
+                        }
+                        IconButton(onClick = {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply { data = android.net.Uri.parse("mailto:sharan18x@gmail.com") }
+                            context.startActivity(intent)
+                        }) {
+                            Icon(painter = painterResource(id = R.drawable.ic_gmail), contentDescription = "Email", tint = AppColors.accentTeal)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Text("Support via UPI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Copy the UPI ID below to pay using any UPI app:", color = AppColors.textMuted, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    val upiId = "sharan77@ptyes"
+                    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(upiId))
+                            Toast.makeText(context, "UPI ID Copied!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = CardDefaults.cardColors(containerColor = AppColors.backgroundDark)
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(upiId, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = AppColors.primaryGreen, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(40.dp))
+                }
             }
         }
     }
@@ -566,7 +655,6 @@ private fun HomeStatSheetContent(
 ) {
     val recentRuns = uiState.runHistory.take(5)
     val averageScore = if (uiState.runHistory.isNotEmpty()) uiState.runHistory.map { it.score }.average() else 0.0
-    val averageLevel = if (uiState.runHistory.isNotEmpty()) uiState.runHistory.map { it.level }.average() else 0.0
     Column(
         Modifier.fillMaxWidth().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -580,7 +668,7 @@ private fun HomeStatSheetContent(
                 HomeStatSheet.HIGH_SCORE -> "Your Best Score"
                 HomeStatSheet.LAST -> "Last Run Breakdown"
                 HomeStatSheet.GAMES -> "Games Played"
-                HomeStatSheet.LEVEL -> "Level Progress"
+                HomeStatSheet.LEVEL -> "Best Survival Time"
                 HomeStatSheet.DROPS -> "River Drops"
                 HomeStatSheet.MODE -> "Control Mode"
                 HomeStatSheet.SKIN -> "Leaf Skin"
@@ -617,7 +705,7 @@ private fun HomeStatSheetContent(
                 if (last != null) {
                     val df = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
                     Text("${last.score} points", color = AppColors.primaryGreen, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
-                    Text("Level ${last.level} • ${last.drops} drops • ${last.difficulty.displayName}", color = AppColors.textMuted)
+                    Text("${last.drops} drops • ${last.difficulty.displayName}", color = AppColors.textMuted)
                     Text("Skin: ${last.skin.displayName} • Theme: ${last.theme.displayName}", color = AppColors.textMuted)
                     Text("Time: ${String.format("%dm %ds", (last.durationSec / 60).toInt(), (last.durationSec % 60).toInt())} • ${df.format(java.util.Date(last.dateEpochMillis))}", color = AppColors.textMuted)
                 } else {
@@ -628,7 +716,6 @@ private fun HomeStatSheetContent(
             HomeStatSheet.GAMES -> {
                 Text("${uiState.totalGamesPlayed} total games", color = AppColors.primaryGreen, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
                 Text("Average score ${"%.0f".format(averageScore)}", color = AppColors.textMuted)
-                Text("Average level ${"%.1f".format(averageLevel)}", color = AppColors.textMuted)
                 // total playtime estimated from runHistory durations
                 val totalSec = uiState.runHistory.sumOf { it.durationSec.toDouble() }.toLong()
                 val hours = totalSec / 3600
@@ -637,14 +724,23 @@ private fun HomeStatSheetContent(
                 // TODO-01 DONE
             }
             HomeStatSheet.LEVEL -> {
-                Text("Current level ${uiState.level}", color = AppColors.primaryGreen, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
-                val hurdlesNeeded = when (uiState.difficultyPreset) {
-                    DifficultyPreset.EASY -> 10
-                    DifficultyPreset.NORMAL -> 8
-                    DifficultyPreset.HARD -> 6
-                    DifficultyPreset.EXTREME -> 4
-                }
-                Text("Next threshold: ${(uiState.level * hurdlesNeeded)} cleared hurdles", color = AppColors.textMuted)
+                val bestSurvivalSec = (uiState.bestSurvivalTime / 1000).toInt()
+                val bm = bestSurvivalSec / 60
+                val bs = bestSurvivalSec % 60
+                val bestTimeStr = String.format("%02d:%02d", bm, bs)
+                Text("Personal Best: $bestTimeStr", color = AppColors.primaryGreen, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
+
+                val avgSurvivalSec = if (uiState.runHistory.isNotEmpty()) uiState.runHistory.map { it.durationSec }.average() else 0.0
+                val am = (avgSurvivalSec / 60).toInt()
+                val avgSecs = (avgSurvivalSec % 60).toInt()
+                val avgTimeStr = String.format("%02d:%02d", am, avgSecs)
+                Text("Average run duration: $avgTimeStr", color = AppColors.textMuted)
+
+                val totalSec = uiState.runHistory.sumOf { it.durationSec.toDouble() }.toLong()
+                val hours = totalSec / 3600
+                val mins = (totalSec % 3600) / 60
+                val secs = totalSec % 60
+                Text("Total time played: ${hours}h ${mins}m ${secs}s", color = AppColors.textMuted)
             }
             HomeStatSheet.DROPS -> {
                 Text("${uiState.totalRiverDrops}", color = AppColors.primaryGreen, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
@@ -814,21 +910,7 @@ private fun PersistentBottomNav(
     }
 }
 
-private fun requiredLevelForSkin(skin: LeafSkin): Int = when (skin) {
-    LeafSkin.CLASSIC -> 1
-    LeafSkin.GOLDEN -> 1
-    LeafSkin.FROST -> 2
-    LeafSkin.FIRE -> 2
-    LeafSkin.NEON -> 3
-    LeafSkin.COSMIC -> 3
-    LeafSkin.RAINBOW -> 4
-    LeafSkin.SHADOW -> 4
-    LeafSkin.AURORA -> 5
-    LeafSkin.JADE -> 5
-    LeafSkin.CHERRY_BLOSSOM -> 6
-    LeafSkin.STORM -> 7
-    LeafSkin.GALAXY -> 8
-}
+private fun requiredLevelForSkin(skin: LeafSkin): Int = 0
 
 private fun coinCostForSkin(skin: LeafSkin): Int = when (skin) {
     LeafSkin.COSMIC -> 2
@@ -842,17 +924,7 @@ private fun coinCostForSkin(skin: LeafSkin): Int = when (skin) {
     else -> 0
 }
 
-private fun requiredLevelForTrail(trailSkin: TrailSkin): Int = when (trailSkin) {
-    TrailSkin.CLASSIC -> 1
-    TrailSkin.SPARKLE -> 1
-    TrailSkin.BUBBLE -> 2
-    TrailSkin.FIRE -> 2
-    TrailSkin.ICE_CRYSTALS -> 3
-    TrailSkin.NEON_LINE -> 3
-    TrailSkin.PETALS -> 4
-    TrailSkin.LIGHTNING -> 5
-    TrailSkin.STARDUST -> 6
-}
+private fun requiredLevelForTrail(trailSkin: TrailSkin): Int = 0
 
 private fun coinCostForTrail(trailSkin: TrailSkin): Int = when (trailSkin) {
     TrailSkin.NEON_LINE -> 1
@@ -862,13 +934,7 @@ private fun coinCostForTrail(trailSkin: TrailSkin): Int = when (trailSkin) {
     else -> 0
 }
 
-private fun requiredLevelForTheme(theme: RiverTheme): Int = when (theme) {
-    RiverTheme.FOREST -> 1
-    RiverTheme.ARCTIC -> 2
-    RiverTheme.VOLCANIC -> 3
-    RiverTheme.CRYSTAL -> 4
-    RiverTheme.MIDNIGHT -> 5
-}
+private fun requiredLevelForTheme(theme: RiverTheme): Int = 0
 
 private fun coinCostForTheme(theme: RiverTheme): Int = when (theme) {
     RiverTheme.CRYSTAL -> 2
@@ -883,13 +949,12 @@ private fun isComingSoonTheme(theme: RiverTheme): Boolean = theme == RiverTheme.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsState()
     val ownedSkins by viewModel.playerSettingsStore.ownedSkinsFlow.collectAsState(initial = setOf(LeafSkin.CLASSIC.name))
     val ownedTrailSkins by viewModel.playerSettingsStore.ownedTrailSkinsFlow.collectAsState(initial = setOf(TrailSkin.CLASSIC.name))
     val activeTrailSkin by viewModel.playerSettingsStore.activeTrailSkinFlow.collectAsState(initial = TrailSkin.CLASSIC)
     val ownedThemes by viewModel.playerSettingsStore.ownedThemesFlow.collectAsState(initial = setOf(RiverTheme.FOREST.name))
     val drops by viewModel.playerSettingsStore.riverDropsFlow.collectAsState(initial = 0)
-    val playerLevel by viewModel.playerSettingsStore.levelReachedFlow.collectAsState(initial = 1)
     val playerCoins = uiState.totalCoins
 
     var activeTab by rememberSaveable { mutableStateOf(0) }
@@ -902,6 +967,43 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
     val shakingItems = remember { mutableStateMapOf<String, Boolean>() }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // State for long-press preview popup
+    var boosterPreviewKind by remember { mutableStateOf<BoostKind?>(null) }
+    var previewSkin by remember { mutableStateOf<LeafSkin?>(null) }
+    var previewTrail by remember { mutableStateOf<TrailSkin?>(null) }
+    var previewTheme by remember { mutableStateOf<RiverTheme?>(null) }
+
+    boosterPreviewKind?.let { previewBoost ->
+        val boosterLevelsForPreview by viewModel.playerSettingsStore.boosterLevelsFlow.collectAsState(initial = emptyMap())
+        BoosterPreviewPopup(
+            boost = previewBoost,
+            currentLevel = boosterLevelsForPreview[previewBoost.name] ?: 0,
+            onDismiss = { boosterPreviewKind = null }
+        )
+    }
+
+    previewSkin?.let { skin ->
+        CosmeticPreviewPopup(
+            title = skin.displayName,
+            previewStyle = skinPreviewStyle(skin),
+            onDismiss = { previewSkin = null }
+        )
+    }
+    previewTrail?.let { trail ->
+        CosmeticPreviewPopup(
+            title = trail.displayName,
+            previewStyle = trailPreviewStyle(trail),
+            onDismiss = { previewTrail = null }
+        )
+    }
+    previewTheme?.let { theme ->
+        CosmeticPreviewPopup(
+            title = theme.displayName,
+            previewStyle = themePreviewStyle(theme),
+            onDismiss = { previewTheme = null }
+        )
+    }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
@@ -953,18 +1055,15 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                     items(LeafSkin.entries) { skin ->
                         val owned = ownedSkins.contains(skin.name)
                         val active = uiState.leafSkin == skin
-                        val reqLvl = requiredLevelForSkin(skin)
                         val coinCost = coinCostForSkin(skin)
                         val isComing = isComingSoonSkin(skin)
-                        val locked = playerLevel < reqLvl && !owned
 
                         val subtitleText = when {
                             active -> "Equipped"
                             owned -> "Owned"
                             isComing -> "Coming Soon"
-                            locked -> "🔒 Level $reqLvl"
                             else -> buildString {
-                                if (coinCost > 0) append("🪙 $coinCost ")
+                                if (coinCost > 0) append("💰 $coinCost ")
                                 if (skin.cost > 0) append("💧 ${skin.cost}")
                             }
                         }
@@ -974,8 +1073,6 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                             subtitle = subtitleText,
                             price = skin.cost,
                             coinCost = coinCost,
-                            requiredLevel = reqLvl,
-                            playerLevel = playerLevel,
                             playerCoins = playerCoins,
                             owned = owned,
                             active = active,
@@ -986,8 +1083,6 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                             onPurchase = {
                                 if (isComing) {
                                     Toast.makeText(context, "Coming Soon!", Toast.LENGTH_SHORT).show()
-                                } else if (locked) {
-                                    Toast.makeText(context, "Level $reqLvl required to unlock!", Toast.LENGTH_SHORT).show()
                                 } else if (drops >= skin.cost && playerCoins >= coinCost) {
                                     pendingTitle = skin.displayName
                                     pendingPrice = skin.cost
@@ -1002,7 +1097,8 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                                     }
                                 }
                             },
-                            onSelect = { viewModel.selectSkin(skin) }
+                            onSelect = { viewModel.selectSkin(skin) },
+                            onLongPress = { previewSkin = skin }
                         )
                     }
 
@@ -1010,18 +1106,15 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                     items(TrailSkin.entries) { trailSkin ->
                         val owned = ownedTrailSkins.contains(trailSkin.name)
                         val active = activeTrailSkin == trailSkin
-                        val reqLvl = requiredLevelForTrail(trailSkin)
                         val coinCost = coinCostForTrail(trailSkin)
                         val isComing = isComingSoonTrail(trailSkin)
-                        val locked = playerLevel < reqLvl && !owned
 
                         val subtitleText = when {
                             active -> "Equipped"
                             owned -> "Owned"
                             isComing -> "Coming Soon"
-                            locked -> "🔒 Level $reqLvl"
                             else -> buildString {
-                                if (coinCost > 0) append("🪙 $coinCost ")
+                                if (coinCost > 0) append("💰 $coinCost ")
                                 if (trailSkin.cost > 0) append("💧 ${trailSkin.cost}")
                             }
                         }
@@ -1031,8 +1124,6 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                             subtitle = subtitleText,
                             price = trailSkin.cost,
                             coinCost = coinCost,
-                            requiredLevel = reqLvl,
-                            playerLevel = playerLevel,
                             playerCoins = playerCoins,
                             owned = owned,
                             active = active,
@@ -1043,8 +1134,6 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                             onPurchase = {
                                 if (isComing) {
                                     Toast.makeText(context, "Coming Soon!", Toast.LENGTH_SHORT).show()
-                                } else if (locked) {
-                                    Toast.makeText(context, "Level $reqLvl required to unlock!", Toast.LENGTH_SHORT).show()
                                 } else if (drops >= trailSkin.cost && playerCoins >= coinCost) {
                                     pendingTitle = trailSkin.displayName
                                     pendingPrice = trailSkin.cost
@@ -1059,41 +1148,104 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                                     }
                                 }
                             },
-                            onSelect = { viewModel.selectTrailSkin(trailSkin) }
+                            onSelect = { viewModel.selectTrailSkin(trailSkin) },
+                            onLongPress = { previewTrail = trailSkin }
                         )
                     }
 
                     item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Boosters") }
+
                     items(BoostKind.values().toList()) { boost ->
                         val boosterLevels by viewModel.playerSettingsStore.boosterLevelsFlow.collectAsState(initial = emptyMap())
                         val curLevel = boosterLevels[boost.name] ?: 0
                         val price = 50 * (curLevel + 1)
-                        Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(boost.color).copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                                    Text(boost.displayName.take(1), color = Color(boost.color))
+                        val boosterAfford = drops >= price
+                        val shakeKey = "booster_${boost.name}"
+                        val shaking = shakingItems[shakeKey] ?: false
+                        val animOffset = remember { Animatable(0f) }
+                        val animFlash = remember { Animatable(0f) }
+                        val accentColor = Color(boost.color)
+                        LaunchedEffect(shaking) {
+                            if (shaking) {
+                                animFlash.animateTo(0.35f, tween(80))
+                                repeat(4) {
+                                    animOffset.animateTo(8f, tween(40))
+                                    animOffset.animateTo(-8f, tween(40))
                                 }
-                                Column(Modifier.weight(1f)) {
-                                    Text(boost.displayName, color = Color.White, fontWeight = FontWeight.Bold)
-                                    Text("Level $curLevel", color = AppColors.textMuted)
-                                }
-                                val boosterAfford = drops >= price
-                                val shakeKey = "booster_${boost.name}"
-                                val shaking = shakingItems[shakeKey] ?: false
-                                val animOffset = remember { Animatable(0f) }
-                                val animFlash = remember { Animatable(0f) }
-                                LaunchedEffect(shaking) {
-                                    if (shaking) {
-                                        animFlash.animateTo(0.35f, tween(80))
-                                        repeat(4) {
-                                            animOffset.animateTo(8f, tween(40))
-                                            animOffset.animateTo(-8f, tween(40))
-                                        }
-                                        animOffset.animateTo(0f, tween(40))
-                                        animFlash.animateTo(0f, tween(200))
-                                    }
-                                }
+                                animOffset.animateTo(0f, tween(40))
+                                animFlash.animateTo(0f, tween(200))
+                            }
+                        }
 
+                        val iconRes = when (boost) {
+                            BoostKind.SPEED -> R.drawable.ic_boost_speed
+                            BoostKind.GHOST -> R.drawable.ic_boost_ghost
+                            BoostKind.SHIELD -> R.drawable.ic_boost_shield
+                            BoostKind.MAGNET -> R.drawable.ic_boost_magnet
+                            BoostKind.SLOW_MO -> R.drawable.ic_boost_slow
+                            BoostKind.DOUBLE_SCORE -> R.drawable.ic_boost_double
+                        }
+
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (shaking) Color.Red.copy(alpha = 0.18f)
+                                else accentColor.copy(alpha = 0.08f)
+                            ),
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .offset(x = animOffset.value.dp)
+                                .pointerInput(boost) {
+                                    detectTapGestures(
+                                        onLongPress = { boosterPreviewKind = boost }
+                                    )
+                                }
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Icon tile — clay-style circle
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(
+                                            Brush.radialGradient(
+                                                listOf(accentColor.copy(alpha = 0.32f), accentColor.copy(alpha = 0.10f))
+                                            )
+                                        )
+                                        .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = iconRes),
+                                        contentDescription = boost.displayName,
+                                        modifier = Modifier.size(30.dp),
+                                        tint = accentColor
+                                    )
+                                }
+                                // Booster name
+                                Text(
+                                    boost.displayName,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1
+                                )
+                                // Level badge
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(99.dp))
+                                        .background(accentColor.copy(alpha = 0.15f))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Lvl $curLevel", color = accentColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                                }
+                                // Upgrade button
                                 Button(
                                     onClick = {
                                         if (boosterAfford) {
@@ -1110,11 +1262,14 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                                             }
                                         }
                                     },
-                                    modifier = Modifier.offset(x = animOffset.value.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (shaking) Color.Red else MaterialTheme.colorScheme.primary
-                                    )
-                                ) { Text("Upgrade • $price") }
+                                        containerColor = if (boosterAfford) accentColor.copy(alpha = 0.85f) else AppColors.backgroundCard
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("💧 $price", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -1123,18 +1278,15 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                     items(RiverTheme.entries) { theme ->
                         val owned = ownedThemes.contains(theme.name)
                         val active = uiState.riverTheme == theme
-                        val reqLvl = requiredLevelForTheme(theme)
                         val coinCost = coinCostForTheme(theme)
                         val isComing = isComingSoonTheme(theme)
-                        val locked = playerLevel < reqLvl && !owned
 
                         val subtitleText = when {
                             active -> "Equipped"
                             owned -> "Owned"
                             isComing -> "Coming Soon"
-                            locked -> "🔒 Level $reqLvl"
                             else -> buildString {
-                                if (coinCost > 0) append("🪙 $coinCost ")
+                                if (coinCost > 0) append("💰 $coinCost ")
                                 if (theme.cost > 0) append("💧 ${theme.cost}")
                             }
                         }
@@ -1144,8 +1296,6 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                             subtitle = subtitleText,
                             price = theme.cost,
                             coinCost = coinCost,
-                            requiredLevel = reqLvl,
-                            playerLevel = playerLevel,
                             playerCoins = playerCoins,
                             owned = owned,
                             active = active,
@@ -1156,8 +1306,6 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                             onPurchase = {
                                 if (isComing) {
                                     Toast.makeText(context, "Coming Soon!", Toast.LENGTH_SHORT).show()
-                                } else if (locked) {
-                                    Toast.makeText(context, "Level $reqLvl required to unlock!", Toast.LENGTH_SHORT).show()
                                 } else if (drops >= theme.cost && playerCoins >= coinCost) {
                                     pendingTitle = theme.displayName
                                     pendingPrice = theme.cost
@@ -1172,7 +1320,8 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                                     }
                                 }
                             },
-                            onSelect = { viewModel.selectTheme(theme) }
+                            onSelect = { viewModel.selectTheme(theme) },
+                            onLongPress = { previewTheme = theme }
                         )
                     }
                 }
@@ -1269,10 +1418,19 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
 
     // Celebration overlay
     uiState.recentCelebration?.let { msg ->
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=0.7f)), contentAlignment = Alignment.Center) {
             com.example.hydraleaf.ConfettiAnimation(Modifier.fillMaxSize())
-            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF173229)), modifier = Modifier.padding(top = 72.dp)) {
-                Text(msg, modifier = Modifier.padding(12.dp), color = Color.White)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF173229)), 
+                modifier = Modifier.padding(32.dp),
+                shape = RoundedCornerShape(28.dp),
+                elevation = CardDefaults.cardElevation(16.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                    Text("🎉 Congratulations! 🎉", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold, fontSize = 24.sp, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(16.dp))
+                    Text(msg, color = Color.White, fontSize = 20.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
+                }
             }
         }
     }
@@ -1518,8 +1676,6 @@ private fun ShopTile(
     subtitle: String,
     price: Int,
     coinCost: Int,
-    requiredLevel: Int,
-    playerLevel: Int,
     playerCoins: Int,
     owned: Boolean,
     active: Boolean,
@@ -1528,7 +1684,8 @@ private fun ShopTile(
     preview: ShopPreviewStyle,
     shaking: Boolean,
     onPurchase: () -> Unit,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     val animOffset = remember { Animatable(0f) }
     val animFlash = remember { Animatable(0f) }
@@ -1544,22 +1701,27 @@ private fun ShopTile(
         }
     }
 
-    val locked = playerLevel < requiredLevel && !owned
-
     Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF132621)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1A15)),
+        border = BorderStroke(1.dp, if (active) Color(0xFF39D39B) else Color.White.copy(alpha = 0.08f)),
         modifier = Modifier
             .fillMaxWidth()
+            .height(160.dp)
             .offset(x = animOffset.value.dp)
+            .pointerInput(title) {
+                detectTapGestures(
+                    onLongPress = { onLongPress?.invoke() }
+                )
+            }
     ) {
-        Box(Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(96.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .height(90.dp)
+                        .clip(RoundedCornerShape(12.dp))
                 ) {
                     ShopPreview(preview, Modifier.fillMaxSize())
                     
@@ -1567,52 +1729,67 @@ private fun ShopTile(
                         Box(
                             Modifier
                                 .align(Alignment.TopStart)
-                                .padding(8.dp)
+                                .padding(6.dp)
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(Color.Black.copy(alpha = 0.65f))
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text("🪙 $coinCost", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Box(Modifier.align(Alignment.TopEnd).padding(10.dp).size(18.dp).clip(RoundedCornerShape(99.dp)).background(preview.accent.copy(alpha = 0.75f)))
-
-                    if (locked) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.6f)),
-                            contentAlignment = Alignment.Center
+                    Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(14.dp).clip(RoundedCornerShape(999.dp)).background(preview.accent.copy(alpha = 0.75f)))
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xCCFFFFFF), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    
+                    val btnModifier = Modifier.height(30.dp)
+                    when {
+                        active -> Button(
+                            onClick = {},
+                            modifier = btnModifier,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                         ) {
-                            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Color.White, modifier = Modifier.size(28.dp))
+                            Text("Equipped ✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
                         }
-                    }
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xCCFFFFFF))
-                }
-                when {
-                    active -> Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("Equipped") }
-                    owned -> OutlinedButton(onClick = onSelect, modifier = Modifier.fillMaxWidth()) { Text("Equip") }
-                    comingSoon -> OutlinedButton(onClick = onPurchase, modifier = Modifier.fillMaxWidth()) { Text("Coming Soon") }
-                    locked -> Button(
-                        onClick = onPurchase,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(Icons.Filled.Lock, contentDescription = "Locked", modifier = Modifier.size(14.dp))
-                            Text("Lvl $requiredLevel")
+                        owned -> OutlinedButton(
+                            onClick = onSelect,
+                            modifier = btnModifier,
+                            border = BorderStroke(1.dp, Color(0xFF39D39B)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF39D39B)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("EQUIP", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         }
-                    }
-                    else -> Button(onClick = onPurchase, modifier = Modifier.fillMaxWidth()) {
-                        Text("BUY")
+                        comingSoon -> OutlinedButton(
+                            onClick = onPurchase,
+                            modifier = btnModifier,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("Soon", style = MaterialTheme.typography.labelSmall)
+                        }
+                        else -> Button(
+                            onClick = onPurchase,
+                            modifier = btnModifier,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            val btnText = if (coinCost > 0) "🔒 🪙 $coinCost" else "🔒 💧 $price"
+                            Text(btnText, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             }
-
+            
             // Red flash overlay
             Box(
                 Modifier
@@ -1661,11 +1838,56 @@ private fun trailPreviewStyle(trailSkin: TrailSkin): ShopPreviewStyle = when (tr
 }
 
 private fun themePreviewStyle(theme: RiverTheme): ShopPreviewStyle = when (theme) {
-    RiverTheme.FOREST -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF1F4B35), Color(0xFF0B1713))), Color(0xFF7CF0BF), "", theme = theme)
-    RiverTheme.ARCTIC -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF7FD7FF), Color(0xFF1A3657))), Color(0xFFE2FBFF), "", theme = theme)
-    RiverTheme.VOLCANIC -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFFFF8A4D), Color(0xFF4B130A))), Color(0xFFFFD2A8), "", theme = theme)
-    RiverTheme.CRYSTAL -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF88E6FF), Color(0xFF24486A))), Color(0xFFD7FBFF), "", theme = theme)
-    RiverTheme.MIDNIGHT -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF0D1631), Color(0xFF03060D))), Color(0xFF8FBAFF), "", theme = theme)
+    RiverTheme.FOREST -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF2A5934), Color(0xFF14301A))), Color(0xFF6BD984), "", theme = theme)
+    RiverTheme.ARCTIC -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF2A4B59), Color(0xFF142430))), Color(0xFF6BCEEB), "", theme = theme)
+    RiverTheme.VOLCANIC -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF592D2A), Color(0xFF301514))), Color(0xFFEB6B6B), "", theme = theme)
+    RiverTheme.CRYSTAL -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF4A2A59), Color(0xFF281430))), Color(0xFFC76BEB), "", theme = theme)
+    RiverTheme.MIDNIGHT -> ShopPreviewStyle(Brush.linearGradient(listOf(Color(0xFF1A1A2E), Color(0xFF0B0B14))), Color(0xFF9494B8), "", theme = theme)
+}
+
+@Composable
+private fun CosmeticPreviewPopup(
+    title: String,
+    previewStyle: ShopPreviewStyle,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1A15)),
+            modifier = Modifier
+                .padding(32.dp)
+                .fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                ) {
+                    ShopPreview(previewStyle, Modifier.fillMaxSize())
+                }
+
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = previewStyle.accent
+                )
+
+                TextButton(onClick = onDismiss) {
+                    Text("Close", color = previewStyle.accent)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1732,11 +1954,16 @@ private fun ChallengesScreen(viewModel: GameViewModel, uiState: GameUiState, onB
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Daily Challenges", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     Spacer(Modifier.weight(1f))
+                    val isUltimate = streak >= 30
+                    val streakColor = if (isUltimate) Color(0xFFFFD700) else Color(0xFFFF7043)
+                    val streakBg = if (isUltimate) Color(0xFFFFD700).copy(alpha = 0.15f) else Color(0xFFE64A19).copy(alpha = 0.12f)
+                    val streakBorder = if (isUltimate) Color(0xFFFFD700).copy(alpha = 0.5f) else Color(0xFFFF5722).copy(alpha = 0.4f)
+                    
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(99.dp))
-                            .background(Color(0xFFE64A19).copy(alpha = 0.12f))
-                            .border(1.dp, Color(0xFFFF5722).copy(alpha = 0.4f), RoundedCornerShape(99.dp))
+                            .background(streakBg)
+                            .border(1.dp, streakBorder, RoundedCornerShape(99.dp))
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1749,9 +1976,23 @@ private fun ChallengesScreen(viewModel: GameViewModel, uiState: GameUiState, onB
                                 cubicTo(size.width * 0.05f, size.height * 0.5f, size.width * 0.3f, size.height * 0.3f, size.width * 0.5f, size.height * 0.05f)
                                 close()
                             }
-                            drawPath(path, Brush.verticalGradient(listOf(Color(0xFFE64A19), Color(0xFFFFB300))))
+                            drawPath(
+                                path = path,
+                                brush = Brush.verticalGradient(
+                                    colors = if (isUltimate) {
+                                        listOf(Color(0xFFFFD700), Color(0xFFFF9E2C))
+                                    } else {
+                                        listOf(Color(0xFFE64A19), Color(0xFFFFB300))
+                                    }
+                                )
+                            )
                         }
-                        Text("$streak-Day Streak", style = MaterialTheme.typography.labelLarge, color = Color(0xFFFF7043), fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (isUltimate) "$streak-Day 🔥 GOLD" else "$streak-Day Streak",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = streakColor,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
@@ -1772,12 +2013,30 @@ private fun ChallengesScreen(viewModel: GameViewModel, uiState: GameUiState, onB
                         else -> Color(0xFFFFCA28)
                     }
 
+                    val infiniteTransition = rememberInfiniteTransition(label = "heroGrad")
+                    val gradOffset by infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 1200f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(5000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "gradOffset"
+                    )
+                    
+                    val heroGradient = Brush.linearGradient(
+                        colors = listOf(Color(0xFF0F261F), Color(0xFF1E4C3E), Color(0xFF0F261F)),
+                        start = Offset(gradOffset - 600f, 0f),
+                        end = Offset(gradOffset + 600f, 1200f)
+                    )
+
                     Card(
                         shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F261F)),
-                        border = BorderStroke(1.dp, Color(0xFF39D39B).copy(alpha = 0.3f)),
+                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                        border = BorderStroke(1.2.dp, Color(0xFF39D39B).copy(alpha = 0.45f)),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(heroGradient, RoundedCornerShape(24.dp))
                             .clickable { activePreviewChallenge = daily.type }
                     ) {
                         Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1844,15 +2103,42 @@ private fun ChallengesScreen(viewModel: GameViewModel, uiState: GameUiState, onB
                 }
 
                 Text("All Challenges", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+
+                // Section labels: fixed challenges always shown, rotating ones refresh daily
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val todaysChallenges = remember { DailyChallengeManager.getTodayChallenges(context) }
+                val rotatingChallenges = todaysChallenges.drop(DailyChallengeManager.FIXED_CHALLENGES.size)
+                val secondsToRefresh = remember { DailyChallengeManager.secondsUntilMidnight() }
+
+                // Fixed daily challenges section
+                Text("📌 Always Active", style = MaterialTheme.typography.labelLarge, color = AppColors.textMuted, fontWeight = FontWeight.Bold)
+
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ChallengeType.entries.forEach { ch ->
+                    val gamesPlayed = uiState.runHistory.size
+                    DailyChallengeManager.FIXED_CHALLENGES.forEach { ch ->
                         val isDaily = daily?.type == ch
-                        val stateLabel = if (isDaily) "TODAY" else "LOCKED"
-                        val stateColor = if (isDaily) Color(0xFF39D39B) else Color(0x66FFFFFF)
+                        val isUnlocked = ChallengeTracker.isChallengeUnlocked(ch, gamesPlayed)
+                        val stateLabel = when {
+                            isDaily -> "TODAY"
+                            !isUnlocked -> "🔒 PLAY 5 RUNS"
+                            else -> "ALWAYS ON"
+                        }
+                        
+                        val stateColor = when {
+                            isDaily -> Color(0xFF39D39B)
+                            !isUnlocked -> Color(0xFFFF5722)
+                            else -> Color(0xFF81C784)
+                        }
+                        
+                        val cardBg = when {
+                            isDaily -> Color(0xFF132B23)
+                            !isUnlocked -> Color(0xFF1A0A0A)
+                            else -> Color(0xFF0F1E19)
+                        }
 
                         Card(
                             shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = if (isDaily) Color(0xFF132B23) else Color(0xFF0F1A17)),
+                            colors = CardDefaults.cardColors(containerColor = cardBg),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { activePreviewChallenge = ch }
@@ -1873,8 +2159,60 @@ private fun ChallengesScreen(viewModel: GameViewModel, uiState: GameUiState, onB
                             }
                         }
                     }
+                } // end fixed challenges column
+
+                // Rotating daily challenges section
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("🔄 Rotating Today", style = MaterialTheme.typography.labelLarge, color = Color(0xFF39D39B), fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text("Refreshes in ${secondsToRefresh / 3600}h ${(secondsToRefresh % 3600) / 60}m",
+                        style = MaterialTheme.typography.labelSmall, color = AppColors.textMuted)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val gamesPlayedR = uiState.runHistory.size
+                    rotatingChallenges.forEach { ch ->
+                        val isDaily = daily?.type == ch
+                        val isUnlocked = ChallengeTracker.isChallengeUnlocked(ch, gamesPlayedR)
+                        val stateLabel = when {
+                            isDaily -> "TODAY"
+                            !isUnlocked -> "🔒 PLAY 5 RUNS"
+                            else -> "ROTATES DAILY"
+                        }
+                        val stateColor = when {
+                            isDaily -> Color(0xFF39D39B)
+                            !isUnlocked -> Color(0xFFFF5722)
+                            else -> Color(0xFF29B6F6)
+                        }
+                        val cardBg = when {
+                            isDaily -> Color(0xFF132B23)
+                            !isUnlocked -> Color(0xFF1A0A0A)
+                            else -> Color(0xFF0A1622)
+                        }
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = cardBg),
+                            modifier = Modifier.fillMaxWidth().clickable { activePreviewChallenge = ch }
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(ch.name.replace('_', ' '), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Spacer(Modifier.weight(1f))
+                                    Box(Modifier.clip(RoundedCornerShape(99.dp)).background(stateColor.copy(alpha = 0.1f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                                        Text(stateLabel, color = stateColor, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Text(ch.description, style = MaterialTheme.typography.bodyMedium, color = Color(0xCCFFFFFF))
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("💧 ${ch.rewardDrops}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF8CF0C5))
+                                    Text("🪙 ${ch.rewardCoins}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFD54F))
+                                }
+                            }
+                        }
+                    }
                 }
             }
+
 
             // Claim rewards rain animation
             if (showRain) {
@@ -2124,7 +2462,7 @@ private fun LeaderboardScreen(uiState: GameUiState, onBack: () -> Unit) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("${bestRun.score} points", style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.Black)
-                                Text("${bestRun.level} levels • ${bestRun.obstaclesCleared} obstacles • ${bestRun.drops} drops", color = Color(0xE6FFFFFF))
+                                Text("${bestRun.survivalTimeSecs} secs • ${bestRun.obstaclesCleared} obstacles • ${bestRun.drops} drops", color = Color(0xE6FFFFFF))
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(dateFormatter.format(java.util.Date(bestRun.dateEpochMillis)), color = Color(0xCCFFFFFF))
@@ -2173,7 +2511,7 @@ private fun LeaderboardScreen(uiState: GameUiState, onBack: () -> Unit) {
                             }
                             Column(Modifier.weight(1f)) {
                                 Text("${run.score} points", color = Color.White, fontWeight = FontWeight.Bold)
-                                Text("${run.level} levels • ${run.drops} drops • ${run.difficulty.displayName}", color = Color(0xCCFFFFFF))
+                                Text("${run.survivalTimeSecs} secs • ${run.drops} drops • ${run.difficulty.displayName}", color = Color(0xCCFFFFFF))
                             }
                             Text(dateFormatter.format(java.util.Date(run.dateEpochMillis)), color = Color(0x99FFFFFF))
                         }
@@ -2650,8 +2988,17 @@ private fun BoosterIconCanvas(title: String, appTheme: AppTheme, modifier: Modif
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GameInfoScreen(appTheme: AppTheme, onBack: () -> Unit) {
+private fun GameInfoScreen(
+    appTheme: AppTheme,
+    showHitboxDebug: Boolean,
+    onToggleHitboxDebug: () -> Unit,
+    onBack: () -> Unit
+) {
+    var showUpiSheet by remember { mutableStateOf(false) }
+    var showQrSheet by remember { mutableStateOf(false) }
+
     val boosts = listOf(
         Triple("Speed Boost", "Temporarily increases leaf speed for quick escapes and higher point accrual.", listOf("Duration: 6s", "Effect: +60% speed", "Use: Tap to activate when available")),
         Triple("Shield", "Grants a temporary protective bubble that prevents one collision.", listOf("Duration: 4s", "Effect: Negates first collision", "Use: Auto-applies when collected")),
@@ -2767,24 +3114,10 @@ private fun GameInfoScreen(appTheme: AppTheme, onBack: () -> Unit) {
                     InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Scoring", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("Score accumulates by passing obstacles, collecting drops and chaining combos. Base obstacle pass = 10 points.", color = AppColors.textPrimary)
-                            Text("Combo multiplies score: every 5 consecutive dodges increases multiplier (1.0 → 1.5 → 2.0 ...).", color = AppColors.textMuted)
-                            Text("Example: Pass an obstacle with ×1.5 combo → +15 points.", color = AppColors.textMuted)
-                        }
-                    }
-                }
-
-                item {
-                    InfoCard(appTheme) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Levels", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            val thresholds = listOf(0,80,200,400,700,1100,1600,2200,3000,4000)
-                            thresholds.forEachIndexed { idx, th ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Level ${idx + 1}", color = AppColors.textPrimary)
-                                    Text("${th} pts", color = AppColors.textMuted)
-                                }
-                            }
+                            Text("Score = 10 × Combo Multiplier × (1.0 + Difficulty Factor) × Cleared Hurdles", color = AppColors.textPrimary)
+                            Text("• Combo Multiplier: DODGES increase combo. E.g. every 5 consecutive dodges adds +0.5x, up to a max of 4.0x combo.", color = AppColors.textMuted)
+                            Text("• Difficulty Factor: Scales up over time (from 0.0 to 1.0) as the survival run progresses, passively adding score.", color = AppColors.textMuted)
+                            Text("• River Drops: Collecting drops or boosters adds +5 points directly to your score.", color = AppColors.textMuted)
                         }
                     }
                 }
@@ -2855,10 +3188,80 @@ private fun GameInfoScreen(appTheme: AppTheme, onBack: () -> Unit) {
                 }
 
                 item {
+                    val context = LocalContext.current
                     InfoCard(appTheme) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Credits", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("🍃 Hydra Leaf | Created by Sharan S | Assets: Kenney.nl (CC0), OpenGameArt.org (CC0), LottieFiles (Free), SVGRepo (CC0), Rive Community (Free) | Version 1.0.0", color = AppColors.textMuted)
+                            Text("Hydra Leaf — v5.0", fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
+                            Text("Created by Sharan S", color = AppColors.textPrimary)
+
+                            val gitHubUrl = "https://github.com/sharancode3"
+                            Text(
+                                text = "GitHub: github.com/sharancode3",
+                                color = AppColors.primaryGreen,
+                                modifier = Modifier.clickable {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(gitHubUrl))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Assets: Kenney.nl (CC0), OpenGameArt.org (CC0), LottieFiles (Free), SVGRepo (CC0), Rive Community (Free)",
+                                color = AppColors.textMuted,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Text(
+                                text = "Version 5.0 (Hold to toggle hitbox debug)",
+                                color = AppColors.textMuted,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            if (BuildConfig.DEBUG) {
+                                                onToggleHitboxDebug()
+                                                Toast.makeText(
+                                                    context,
+                                                    "Hitbox Debug: ${if (!showHitboxDebug) "ON" else "OFF"}",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    InfoCard(appTheme) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Support the Developer", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text("Enjoying Hydra Leaf? Consider supporting future updates!", color = AppColors.textPrimary)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Button(
+                                    onClick = { showUpiSheet = true },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.primaryGreen)
+                                ) {
+                                    Text("Pay via UPI", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { showQrSheet = true },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.primaryGreen)
+                                ) {
+                                    Text("Show QR", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -2870,6 +3273,78 @@ private fun GameInfoScreen(appTheme: AppTheme, onBack: () -> Unit) {
                             Text("- Start on easy difficulty to learn obstacle patterns.\n- Use boosters conservatively and combine with near-miss combos.\n- Visit the shop to preview trails and skins.\n- Open settings to adjust HUD opacity and particle density for clearer visuals.", color = AppColors.textPrimary)
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (showUpiSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showUpiSheet = false },
+            containerColor = AppColors.backgroundDark
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Support via UPI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
+                Text("Copy the UPI ID below to pay using any UPI app:", color = AppColors.textMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                val upiId = "sharan77@ptyes"
+                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                val context = LocalContext.current
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(upiId))
+                        Toast.makeText(context, "UPI ID Copied!", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = CardDefaults.cardColors(containerColor = AppColors.backgroundCard)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(upiId, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
+                        Text("Copy 📋", color = AppColors.primaryGreen, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showQrSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showQrSheet = false },
+            containerColor = AppColors.backgroundDark
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Scan QR Code", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
+                Text("Scan this code using any UPI payment app to contribute:", color = AppColors.textMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Box(
+                    modifier = Modifier.size(200.dp).clip(RoundedCornerShape(12.dp)).background(Color.White).padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.upi_qr),
+                        contentDescription = "UPI QR Code",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                val context = LocalContext.current
+                Button(
+                    onClick = {
+                        Toast.makeText(context, "QR Code saved to Gallery!", Toast.LENGTH_SHORT).show()
+                        showQrSheet = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.primaryGreen)
+                ) {
+                    Text("Save to Gallery", color = Color.Black, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2910,13 +3385,13 @@ private fun SettingsScreen(
                         val selected = themeOption == settings.appTheme
                         val mainColor = when (themeOption) {
                             AppTheme.DARK -> Color(0xFF0D2B1E)
-                            AppTheme.LIGHT -> Color(0xFFF5F0E8)
-                            AppTheme.AURORA -> Color(0xFF0F0A2E)
+                            AppTheme.LIGHT -> Color(0xFFE8F5F0)
+                            AppTheme.AURORA -> Color(0xFF0D0020)
                         }
                         val accentColor = when (themeOption) {
                             AppTheme.DARK -> Color(0xFF3DFFA0)
-                            AppTheme.LIGHT -> Color(0xFF1A7A4A)
-                            AppTheme.AURORA -> Color(0xFF7B61FF)
+                            AppTheme.LIGHT -> Color(0xFF1A8C5A)
+                            AppTheme.AURORA -> Color(0xFF7B2FFF)
                         }
                         Card(
                             shape = RoundedCornerShape(12.dp),
@@ -2925,7 +3400,7 @@ private fun SettingsScreen(
                                 .height(56.dp)
                                 .border(
                                     2.dp,
-                                    if (selected) Color(0xFF3DFFA0) else Color.Transparent,
+                                    if (selected) AppColors.primaryGreen else Color.Transparent,
                                     RoundedCornerShape(12.dp)
                                 )
                                 .clickable { onAppThemeChanged(themeOption) },

@@ -1,0 +1,37 @@
+.class public abstract Lg2/a;
+.super Ljava/lang/Object;
+.source "r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b"
+
+
+# static fields
+.field public static final a:[I
+
+.field public static final b:[Ljava/lang/Object;
+
+
+# direct methods
+.method static constructor <clinit>()V
+    .locals 2
+
+    .line 1
+    const/4 v0, 0x0
+
+    .line 2
+    new-array v1, v0, [I
+
+    .line 3
+    .line 4
+    sput-object v1, Lg2/a;->a:[I
+
+    .line 5
+    .line 6
+    new-array v0, v0, [Ljava/lang/Object;
+
+    .line 7
+    .line 8
+    sput-object v0, Lg2/a;->b:[Ljava/lang/Object;
+
+    .line 9
+    .line 10
+    return-void
+.end method

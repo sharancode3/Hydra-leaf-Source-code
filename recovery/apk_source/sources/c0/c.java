@@ -1,0 +1,19 @@
+package c0;
+
+import a7.c0;
+import java.util.List;
+import t1.m0;
+import t1.n0;
+import t1.o0;
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public final class c implements m0 {
+
+    /* renamed from: a  reason: collision with root package name */
+    public static final c f1699a = new Object();
+
+    @Override // t1.m0
+    public final n0 a(o0 o0Var, List list, long j9) {
+        return o0Var.o(o2.b.i(j9), o2.b.h(j9), c0.f192c, b.f1698c);
+    }
+}

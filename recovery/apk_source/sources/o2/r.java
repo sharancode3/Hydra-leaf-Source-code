@@ -1,0 +1,34 @@
+package o2;
+/* JADX WARN: Failed to restore enum class, 'enum' modifier and super class removed */
+/* JADX WARN: Unknown enum class pattern. Please report as an issue! */
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public final class r {
+
+    /* renamed from: c  reason: collision with root package name */
+    public static final r f7565c;
+
+    /* renamed from: d  reason: collision with root package name */
+    public static final r f7566d;
+
+    /* renamed from: e  reason: collision with root package name */
+    public static final /* synthetic */ r[] f7567e;
+
+    /* JADX WARN: Type inference failed for: r0v0, types: [java.lang.Enum, o2.r] */
+    /* JADX WARN: Type inference failed for: r1v1, types: [java.lang.Enum, o2.r] */
+    static {
+        ?? r02 = new Enum("Ltr", 0);
+        f7565c = r02;
+        ?? r12 = new Enum("Rtl", 1);
+        f7566d = r12;
+        f7567e = new r[]{r02, r12};
+    }
+
+    public static r valueOf(String str) {
+        return (r) Enum.valueOf(r.class, str);
+    }
+
+    public static r[] values() {
+        return (r[]) f7567e.clone();
+    }
+}

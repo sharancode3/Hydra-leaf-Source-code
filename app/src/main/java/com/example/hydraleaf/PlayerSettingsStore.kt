@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.flow.Flow
@@ -47,7 +48,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
 
     val highScoreFlow: Flow<Int>     = dataStore.data.map { it[HIGH_SCORE_KEY] ?: 0 }
     val lastScoreFlow: Flow<Int>     = dataStore.data.map { it[LAST_SCORE_KEY] ?: 0 }
-    val levelReachedFlow: Flow<Int>  = dataStore.data.map { it[LEVEL_REACHED_KEY] ?: 1 }
+    val bestSurvivalTimeFlow: Flow<Long> = dataStore.data.map { it[BEST_SURVIVAL_TIME_KEY] ?: 0L }
     val defaultDifficultyFlow: Flow<DifficultyPreset> = dataStore.data.map {
         it[DEFAULT_DIFFICULTY_KEY]?.let { value -> runCatching { DifficultyPreset.valueOf(value) }.getOrNull() } ?: DifficultyPreset.NORMAL
     }
@@ -136,8 +137,8 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
     suspend fun setInstantSnap(v: Boolean)          { dataStore.edit { it[SNAP_KEY] = v } }
     suspend fun setIconScale(v: Float)              { dataStore.edit { it[ICON_SCALE_KEY] = v } }
     suspend fun setHighScore(v: Int)                { dataStore.edit { it[HIGH_SCORE_KEY] = v } }
+    suspend fun setBestSurvivalTime(v: Long)        { dataStore.edit { it[BEST_SURVIVAL_TIME_KEY] = v } }
     suspend fun setLastScore(v: Int)                { dataStore.edit { it[LAST_SCORE_KEY] = v } }
-    suspend fun setLevelReached(v: Int)             { dataStore.edit { it[LEVEL_REACHED_KEY] = v } }
     suspend fun setTutorialSeen(v: Boolean)         { dataStore.edit { it[TUTORIAL_SEEN_KEY] = v } }
     suspend fun setSoundEnabled(v: Boolean)         { dataStore.edit { it[SOUND_KEY] = v } }
     suspend fun setControlMode(v: ControlMode)      { dataStore.edit { it[CONTROL_MODE_KEY] = v.name } }
@@ -216,7 +217,6 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
     suspend fun recordRun(record: RunRecord) {
         dataStore.edit { prefs ->
             prefs[LAST_SCORE_KEY] = record.score
-            prefs[LEVEL_REACHED_KEY] = maxOf(prefs[LEVEL_REACHED_KEY] ?: 1, record.level)
             prefs[GAMES_PLAYED_KEY] = (prefs[GAMES_PLAYED_KEY] ?: 0) + 1
             prefs[TOTAL_DROPS_KEY] = (prefs[TOTAL_DROPS_KEY] ?: 0) + maxOf(0, record.drops)
             val current = prefs[RUN_HISTORY_KEY]
@@ -364,7 +364,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
 
     private fun encodeRunRecord(record: RunRecord): String = listOf(
         record.score,
-        record.level,
+        record.survivalTimeSecs,
         record.drops,
         record.obstaclesCleared,
         record.durationSec,
@@ -380,7 +380,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
         return runCatching {
             RunRecord(
                 score = parts[0].toInt(),
-                level = parts[1].toInt(),
+                survivalTimeSecs = parts[1].toInt(),
                 drops = parts[2].toInt(),
                 obstaclesCleared = parts[3].toInt(),
                 durationSec = parts[4].toFloat(),
@@ -424,6 +424,7 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
         val SNAP_KEY          = booleanPreferencesKey("instant_snap")
         val ICON_SCALE_KEY    = floatPreferencesKey("icon_scale")
         val HIGH_SCORE_KEY    = intPreferencesKey("high_score")
+        val BEST_SURVIVAL_TIME_KEY = longPreferencesKey("bestSurvivalTime")
         val TUTORIAL_SEEN_KEY = booleanPreferencesKey("tutorial_seen")
         val SOUND_KEY         = booleanPreferencesKey("sound_enabled")
         val CONTROL_MODE_KEY  = stringPreferencesKey("control_mode")
@@ -447,7 +448,6 @@ class PlayerSettingsStore(private val dataStore: DataStore<Preferences>) {
         val COINS_KEY         = intPreferencesKey("total_coins")
         val GAMES_PLAYED_KEY  = intPreferencesKey("games_played")
         val LAST_SCORE_KEY    = intPreferencesKey("last_score")
-        val LEVEL_REACHED_KEY = intPreferencesKey("level_reached")
         val OWNED_SKINS_KEY   = stringPreferencesKey("owned_skins")
         val ACTIVE_SKIN_KEY   = stringPreferencesKey("active_skin")
         val OWNED_TRAIL_SKINS_KEY = stringPreferencesKey("owned_trail_skins")

@@ -1,0 +1,73 @@
+.class public final Ln1/g;
+.super Lw0/l;
+.source "r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b"
+
+# interfaces
+.implements Ln1/f;
+
+
+# instance fields
+.field public c:Lw1/z;
+
+
+# virtual methods
+.method public final P(Landroid/view/KeyEvent;)Z
+    .locals 2
+
+    .line 1
+    iget-object v0, p0, Ln1/g;->c:Lw1/z;
+
+    .line 2
+    .line 3
+    if-eqz v0, :cond_0
+
+    .line 4
+    .line 5
+    new-instance v1, Ln1/c;
+
+    .line 6
+    .line 7
+    invoke-direct {v1, p1}, Ln1/c;-><init>(Landroid/view/KeyEvent;)V
+
+    .line 8
+    .line 9
+    .line 10
+    invoke-virtual {v0, v1}, Lw1/z;->invoke(Ljava/lang/Object;)Ljava/lang/Object;
+
+    .line 11
+    .line 12
+    .line 13
+    move-result-object p1
+
+    .line 14
+    check-cast p1, Ljava/lang/Boolean;
+
+    .line 15
+    .line 16
+    invoke-virtual {p1}, Ljava/lang/Boolean;->booleanValue()Z
+
+    .line 17
+    .line 18
+    .line 19
+    move-result p1
+
+    .line 20
+    return p1
+
+    .line 21
+    :cond_0
+    const/4 p1, 0x0
+
+    .line 22
+    return p1
+.end method
+
+.method public final h(Landroid/view/KeyEvent;)Z
+    .locals 0
+
+    .line 1
+    const/4 p1, 0x0
+
+    .line 2
+    return p1
+.end method

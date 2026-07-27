@@ -1,0 +1,16 @@
+package n4;
+
+import java.util.ArrayList;
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public final class e0 {
+
+    /* renamed from: a  reason: collision with root package name */
+    public final ArrayList f7184a = new ArrayList();
+
+    /* renamed from: b  reason: collision with root package name */
+    public final int f7185b = 5;
+
+    /* renamed from: c  reason: collision with root package name */
+    public final long f7186c = 0;
+}

@@ -22,8 +22,12 @@ android {
         applicationId = "com.example.hydraleaf"
         minSdk = 24
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.5.0"
+        
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     signingConfigs {
@@ -39,8 +43,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             buildConfigField("boolean", "SHOW_DEBUG_OVERLAY", "false")
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")

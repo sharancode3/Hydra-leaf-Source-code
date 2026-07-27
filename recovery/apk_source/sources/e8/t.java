@@ -1,0 +1,10 @@
+package e8;
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public final class t extends c8.b {
+    /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+    public t(c8.j annotations, l0 l0Var) {
+        super(annotations);
+        kotlin.jvm.internal.k.e(annotations, "annotations");
+    }
+}

@@ -62,6 +62,7 @@ class GameAudioEngine(private val context: Context) {
     private val nearMissClip: ShortArray
     private val shieldBreakClip: ShortArray
     private val levelUpClip: ShortArray
+    private val purchaseClip: ShortArray
 
     private val soundPool: SoundPool
     private var mediaPlayer: MediaPlayer? = null
@@ -81,12 +82,13 @@ class GameAudioEngine(private val context: Context) {
         dodgeClips = Array(5) { i ->
             generateTone(GameConstants.PENTATONIC_FREQS[i], GameConstants.DODGE_TONE_DURATION, 0.35f, decay = true)
         }
-        collectClip = generateChirp(440f, 880f, GameConstants.COLLECT_TONE_DURATION, 0.3f)
-        deathClip   = generateTone(80f, GameConstants.DEATH_TONE_DURATION, 0.5f, decay = true)
+        collectClip = generateChirp(1200f, 2400f, 0.12f, 0.35f) // High-pitched metallic 'cling'
+        deathClip   = generateChirp(300f, 80f, 0.8f, 0.5f)      // Descending sad tone
         powerUpClip = generateChirp(523f, 1047f, 0.2f, 0.25f)
         nearMissClip = generateChirp(900f, 520f, 0.1f, 0.22f)
         shieldBreakClip = generateChirp(240f, 60f, 0.18f, 0.3f)
         levelUpClip = generateChirp(520f, 1200f, 0.22f, 0.25f)
+        purchaseClip = generateChirp(440f, 1760f, 0.4f, 0.4f)   // Upbeat celebration
 
         soundPool = SoundPool.Builder()
             .setMaxStreams(10)
@@ -168,8 +170,8 @@ class GameAudioEngine(private val context: Context) {
                         val aAmp = ((int - 0.8f) / 0.2f).coerceIn(0.0f, 1.0f)
                         sample += sin(phase * 3.0) * 0.03 * aAmp * musicVolume
                     }
-                    // Water rush noise (filtered)
-                    val noiseAmp = 0.04 * (0.3 + spd * 0.3)
+                    // Water rush noise (filtered), respecting SFX volume
+                    val noiseAmp = 0.04 * (0.3 + spd * 0.3) * sfxVolume
                     sample += (Math.random() * 2 - 1) * noiseAmp
 
                     phase += 2 * PI * GameConstants.WATER_RUSH_BASE_FREQ * spd / sr
@@ -338,8 +340,8 @@ class GameAudioEngine(private val context: Context) {
             "magnet" -> "booster_pickup_magnet"
             else -> "sfx_boost_collect"
         }
-        if (playExternalSfx(sfxName) || playExternalSfx("sfx_boost_collect")) return
-        if (soundEnabled) sfxQueue.offer(powerUpClip)
+        if (playExternalSfx(sfxName)) return
+        if (soundEnabled) sfxQueue.offer(collectClip) // Changed from powerUpClip to collectClip (cling sound)
     }
 
     fun playBoosterActivate(type: String) {
@@ -373,7 +375,7 @@ class GameAudioEngine(private val context: Context) {
 
     fun playPurchase() {
         if (playExternalSfx("purchase") || playExternalSfx("sfx_collect")) return
-        if (soundEnabled) sfxQueue.offer(collectClip)
+        if (soundEnabled) sfxQueue.offer(purchaseClip)
     }
 
     /** Number of currently active music layers (1-5) based on intensity */

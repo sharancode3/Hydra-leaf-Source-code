@@ -11,7 +11,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
@@ -20,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -102,8 +102,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.animation.core.tween
@@ -141,56 +139,25 @@ import kotlinx.coroutines.isActive
 // ── Theme color palettes for river themes ────────────────────────────────────
 
 private object ThemeColors {
-    fun waterGradient(theme: RiverTheme, dayPhase: DayPhase, appTheme: AppTheme): List<Color> {
-        if (appTheme == AppTheme.LIGHT) {
-            return when (theme) {
-                RiverTheme.FOREST -> listOf(Color(0xFFF5F0E8), Color(0xFFEBE5D8), Color(0xFFDFD9CD))
-                RiverTheme.ARCTIC -> listOf(Color(0xFFE6F3F7), Color(0xFFD4EAEF), Color(0xFFBFDFE7))
-                RiverTheme.VOLCANIC -> listOf(Color(0xFFF7EBE6), Color(0xFFEFDDD4), Color(0xFFE7CEBF))
-                RiverTheme.CRYSTAL -> listOf(Color(0xFFF0E6F7), Color(0xFFE4D4EF), Color(0xFFD7BFDF))
-                RiverTheme.MIDNIGHT -> listOf(Color(0xFFEBE6F7), Color(0xFFDDD4EF), Color(0xFFCEBFDF))
-            }
+    fun waterGradient(theme: RiverTheme, dayPhase: DayPhase): List<Color> = when (theme) {
+        RiverTheme.FOREST  -> when (dayPhase) {
+            DayPhase.DAWN  -> listOf(Color(0xFF0A2520), Color(0xFF1A5040), Color(0xFF208060))
+            DayPhase.DAY   -> listOf(Color(0xFF03111A), Color(0xFF053A4A), Color(0xFF0C6B5F))
+            DayPhase.DUSK  -> listOf(Color(0xFF1A1008), Color(0xFF3A2510), Color(0xFF4A3818))
+            DayPhase.NIGHT -> listOf(Color(0xFF020810), Color(0xFF061828), Color(0xFF0A2838))
         }
-        if (appTheme == AppTheme.AURORA) {
-            return when (theme) {
-                RiverTheme.FOREST -> listOf(Color(0xFF0F0A2E), Color(0xFF1D1452), Color(0xFF2B1E78))
-                RiverTheme.ARCTIC -> listOf(Color(0xFF0D0A24), Color(0xFF171342), Color(0xFF221B66))
-                RiverTheme.VOLCANIC -> listOf(Color(0xFF180A2E), Color(0xFF2D1452), Color(0xFF421E78))
-                RiverTheme.CRYSTAL -> listOf(Color(0xFF0F0A2E), Color(0xFF221354), Color(0xFF381E7A))
-                RiverTheme.MIDNIGHT -> listOf(Color(0xFF0B0626), Color(0xFF140D3E), Color(0xFF1F145C))
-            }
-        }
-        return when (theme) {
-            RiverTheme.FOREST  -> when (dayPhase) {
-                DayPhase.DAWN  -> listOf(Color(0xFF0A2520), Color(0xFF1A5040), Color(0xFF208060))
-                DayPhase.DAY   -> listOf(Color(0xFF03111A), Color(0xFF053A4A), Color(0xFF0C6B5F))
-                DayPhase.DUSK  -> listOf(Color(0xFF1A1008), Color(0xFF3A2510), Color(0xFF4A3818))
-                DayPhase.NIGHT -> listOf(Color(0xFF020810), Color(0xFF061828), Color(0xFF0A2838))
-            }
-            RiverTheme.ARCTIC  -> listOf(Color(0xFF0A1828), Color(0xFF1A3858), Color(0xFF3070A0))
-            RiverTheme.VOLCANIC -> listOf(Color(0xFF1A0808), Color(0xFF3A1010), Color(0xFF602020))
-            RiverTheme.CRYSTAL -> listOf(Color(0xFF100820), Color(0xFF281848), Color(0xFF483080))
-            RiverTheme.MIDNIGHT -> listOf(Color(0xFF020208), Color(0xFF080818), Color(0xFF101030))
-        }
+        RiverTheme.ARCTIC  -> listOf(Color(0xFF0A1828), Color(0xFF1A3858), Color(0xFF3070A0))
+        RiverTheme.VOLCANIC -> listOf(Color(0xFF1A0808), Color(0xFF3A1010), Color(0xFF602020))
+        RiverTheme.CRYSTAL -> listOf(Color(0xFF100820), Color(0xFF281848), Color(0xFF483080))
+        RiverTheme.MIDNIGHT -> listOf(Color(0xFF020208), Color(0xFF080818), Color(0xFF101030))
     }
 
-    fun rippleColor(theme: RiverTheme, appTheme: AppTheme): Color {
-        if (appTheme == AppTheme.LIGHT) {
-            return when (theme) {
-                RiverTheme.FOREST -> Color(0xFF1A7A4A)
-                RiverTheme.ARCTIC -> Color(0xFF1A5E7A)
-                RiverTheme.VOLCANIC -> Color(0xFFB3361B)
-                RiverTheme.CRYSTAL -> Color(0xFF651BCA)
-                RiverTheme.MIDNIGHT -> Color(0xFF1B2ECA)
-            }
-        }
-        return when (theme) {
-            RiverTheme.FOREST  -> Color(0xFF59F0FF)
-            RiverTheme.ARCTIC  -> Color(0xFFA0D8FF)
-            RiverTheme.VOLCANIC -> Color(0xFFFF6040)
-            RiverTheme.CRYSTAL -> Color(0xFFB080FF)
-            RiverTheme.MIDNIGHT -> Color(0xFF4040FF)
-        }
+    fun rippleColor(theme: RiverTheme): Color = when (theme) {
+        RiverTheme.FOREST  -> Color(0xFF59F0FF)
+        RiverTheme.ARCTIC  -> Color(0xFFA0D8FF)
+        RiverTheme.VOLCANIC -> Color(0xFFFF6040)
+        RiverTheme.CRYSTAL -> Color(0xFFB080FF)
+        RiverTheme.MIDNIGHT -> Color(0xFF4040FF)
     }
 
     fun leafColors(skin: LeafSkin): Pair<Color, Color> = when (skin) {
@@ -232,18 +199,50 @@ private fun loadObstacleSprites(context: android.content.Context): ObstacleSprit
 
 private fun loadFirstAssetBitmap(context: android.content.Context, vararg assetPaths: String): ImageBitmap? {
     for (path in assetPaths) {
-        val pathsToTry = listOf(
-            path,
-            path.replace(".png", ".webp").replace(".jpg", ".webp").replace(".jpeg", ".webp")
-        ).distinct()
-        for (p in pathsToTry) {
-            val bmp = runCatching {
-                context.assets.open(p).use { stream -> BitmapFactory.decodeStream(stream)?.asImageBitmap() }
-            }.getOrNull()
-            if (bmp != null) return bmp
-        }
+        val bmp = runCatching {
+            context.assets.open(path).use { stream -> BitmapFactory.decodeStream(stream)?.asImageBitmap() }
+        }.getOrNull()
+        if (bmp != null) return bmp
     }
     return null
+}
+
+private fun loadBoosterBitmaps(context: android.content.Context): Map<BoostKind, ImageBitmap> {
+    val map = mutableMapOf<BoostKind, ImageBitmap>()
+    BoostKind.entries.forEach { kind ->
+        val resId = when(kind) {
+            BoostKind.SPEED -> R.drawable.ic_boost_speed
+            BoostKind.SHIELD -> R.drawable.ic_boost_shield
+            BoostKind.MAGNET -> R.drawable.ic_boost_magnet
+            BoostKind.GHOST -> R.drawable.ic_boost_ghost
+            BoostKind.SLOW_MO -> R.drawable.ic_boost_slow
+            BoostKind.DOUBLE_SCORE -> R.drawable.ic_boost_double
+        }
+        val drawable = androidx.core.content.ContextCompat.getDrawable(context, resId)
+        if (drawable != null) {
+            val bitmap = android.graphics.Bitmap.createBitmap(120, 120, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, 120, 120)
+            drawable.draw(canvas)
+            map[kind] = bitmap.asImageBitmap()
+        }
+    }
+    return map
+}
+
+private fun loadPowerUpBitmaps(context: android.content.Context): Map<PowerUpType, ImageBitmap> {
+    val map = mutableMapOf<PowerUpType, ImageBitmap>()
+    PowerUpType.entries.forEach { kind ->
+        val drawable = androidx.core.content.ContextCompat.getDrawable(context, kind.iconRes)
+        if (drawable != null) {
+            val bitmap = android.graphics.Bitmap.createBitmap(120, 120, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, 120, 120)
+            drawable.draw(canvas)
+            map[kind] = bitmap.asImageBitmap()
+        }
+    }
+    return map
 }
 
 // ── Main composable ──────────────────────────────────────────────────────────
@@ -266,72 +265,68 @@ fun LeafGameScreen(
     val context = LocalContext.current
     val reusableLeafPath = remember { Path() }
     val obstacleSprites = remember { loadObstacleSprites(context) }
+    val boosterBitmaps = remember { loadBoosterBitmaps(context) }
+    val powerUpBitmaps = remember { loadPowerUpBitmaps(context) }
     // local draw helper: collect effects
     fun DrawScope.drawCollectEffects(effects: List<com.example.hydraleaf.CollectEffectState>, vp: ViewportMapping) {
         effects.forEach { e ->
             val s = logicalToScreen(android.graphics.PointF(e.x, e.y), vp)
             val age = e.age.coerceIn(0f, 1f)
-            
-            if (e.text != null) {
-                // Floating text pop fading and moving upwards
+            if (e.kind == "score") {
                 val alpha = (1f - age).pow(1.2f)
                 val scale = 1f + (1f - age) * 0.8f
+                val driftY = s.y - (40f * age * vp.scale) // drift upwards
                 drawContext.canvas.nativeCanvas.apply {
                     save()
-                    translate(s.x, s.y - 45f * vp.scale * age)
+                    translate(s.x, driftY)
                     scale(scale, scale)
                     val paint = android.graphics.Paint().apply {
                         isAntiAlias = true
                         color = when {
-                            e.text.contains("SPEED") -> android.graphics.Color.YELLOW
-                            e.text.contains("SHIELD") -> android.graphics.Color.CYAN
-                            e.text.contains("MAGNET") -> android.graphics.Color.MAGENTA
+                            e.combo >= 2f -> android.graphics.Color.parseColor("#FFD83D") // Gold
+                            e.hasDiffBonus -> android.graphics.Color.parseColor("#39D39B") // Teal
                             else -> android.graphics.Color.WHITE
                         }
+                        this.alpha = (255 * alpha).toInt()
                         textSize = (20f * vp.scale)
-                        setShadowLayer(6f * vp.scale, 0f, 0f, android.graphics.Color.argb((150 * alpha).toInt(), 0, 0, 0))
-                        textAlign = android.graphics.Paint.Align.CENTER
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    }
-                    drawText(e.text, 0f, 0f, paint)
-                    restore()
-                }
-
-                // Particle burst matching the booster's color
-                val ringRadius = (6f + (48f - 6f) * age) * vp.scale
-                val ringAlpha = (1f - age).pow(1.4f)
-                val ringColor = when {
-                    e.text.contains("SPEED") -> Color(0xFFFFD83D)
-                    e.text.contains("SHIELD") -> Color(0xFF44F0C5)
-                    e.text.contains("MAGNET") -> Color(0xFFFF6AA8)
-                    else -> Color(0xFFFAFF7A)
-                }
-                drawCircle(ringColor.copy(alpha = 0.35f * ringAlpha), ringRadius * 1.1f, Offset(s.x, s.y))
-                drawCircle(ringColor.copy(alpha = 0.9f * ringAlpha), ringRadius, Offset(s.x, s.y), style = Stroke(2f * vp.scale))
-
-                val sparks = 8
-                for (i in 0 until sparks) {
-                    val ang = i * (2 * PI.toFloat() / sparks) + age * 6f
-                    val dist = ringRadius * (0.6f + age * 0.6f)
-                    val px = s.x + cos(ang) * dist
-                    val py = s.y + sin(ang) * dist
-                    drawCircle(ringColor.copy(alpha = 0.8f * ringAlpha), 3f * vp.scale, Offset(px, py))
-                }
-            } else if (e.kind == "score") {
-                val alpha = (1f - age).pow(1.2f)
-                val scale = 1f + (1f - age) * 0.8f
-                drawContext.canvas.nativeCanvas.apply {
-                    save()
-                    translate(s.x, s.y - 8f * vp.scale)
-                    scale(scale, scale)
-                    val paint = android.graphics.Paint().apply {
-                        isAntiAlias = true
-                        color = android.graphics.Color.WHITE
-                        textSize = (18f * vp.scale)
-                        setShadowLayer(6f * vp.scale, 0f, 0f, android.graphics.Color.argb((120 * alpha).toInt(), 0, 0, 0))
+                        setShadowLayer(4f * vp.scale, 0f, 4f * vp.scale, android.graphics.Color.argb((100 * alpha).toInt(), 0, 0, 0))
                         textAlign = android.graphics.Paint.Align.CENTER
                     }
                     drawText("+${e.value}", 0f, 0f, paint)
+                    if (e.combo >= 2f) {
+                        paint.textSize = (12f * vp.scale)
+                        drawText("x${e.combo.toInt()} COMBO!", 0f, 16f * vp.scale, paint)
+                    }
+                    restore()
+                }
+            } else if (e.kind == "drop") {
+                val alpha = (1f - age).pow(1.5f)
+                val dropScale = (1f + age * 0.5f) * vp.scale
+                val dropY = s.y - (30f * age * vp.scale)
+                drawContext.canvas.nativeCanvas.apply {
+                    save()
+                    translate(s.x, dropY)
+                    scale(dropScale, dropScale)
+                    val paint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        color = android.graphics.Color.parseColor("#39D39B") // Teal
+                        this.alpha = (255 * alpha).toInt()
+                        setShadowLayer(5f, 0f, 0f, android.graphics.Color.argb((200 * alpha).toInt(), 57, 211, 155))
+                    }
+                    val path = android.graphics.Path().apply {
+                        moveTo(0f, -6f)
+                        cubicTo(4f, -2f, 4f, 4f, 0f, 6f)
+                        cubicTo(-4f, 4f, -4f, -2f, 0f, -6f)
+                        close()
+                    }
+                    drawPath(path, paint)
+                    
+                    // Highlight on drop
+                    paint.color = android.graphics.Color.WHITE
+                    paint.alpha = (150 * alpha).toInt()
+                    paint.clearShadowLayer()
+                    drawCircle(1.5f, 1.5f, 1f, paint)
+                    
                     restore()
                 }
             } else {
@@ -343,7 +338,7 @@ fun LeafGameScreen(
                 // small sparkles
                 val sparks = 6
                 for (i in 0 until sparks) {
-                    val ang = i * (2 * PI.toFloat() / sparks) + age * 6f
+                    val ang = i * (2 * Math.PI.toFloat() / sparks) + age * 6f
                     val dist = ringRadius * (0.6f + age * 0.6f)
                     val px = s.x + cos(ang) * dist
                     val py = s.y + sin(ang) * dist
@@ -413,7 +408,7 @@ fun LeafGameScreen(
             else -> Modifier
         }
 
-        val tapMod = if (BuildConfig.SHOW_DEBUG_OVERLAY) {
+        val tapMod = if (uiState.showHitboxDebug || BuildConfig.SHOW_DEBUG_OVERLAY) {
             Modifier.pointerInteropFilter { event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
@@ -447,6 +442,12 @@ fun LeafGameScreen(
         // ── Canvas ───────────────────────────────────────────────────────────
         Canvas(modifier = Modifier.fillMaxSize().then(inputMod).then(tapMod)) {
             val vp = IdentityViewport
+            
+            val shakeX = if (uiState.cameraShakeAmount > 0f) (kotlin.random.Random.nextFloat() * 2f - 1f) * uiState.cameraShakeAmount * vp.scale else 0f
+            val shakeY = if (uiState.cameraShakeAmount > 0f) (kotlin.random.Random.nextFloat() * 2f - 1f) * uiState.cameraShakeAmount * vp.scale else 0f
+            
+            drawContext.canvas.nativeCanvas.save()
+            drawContext.canvas.nativeCanvas.translate(shakeX, shakeY)
 
             // 5-layer parallax background
             drawParallaxBackground(uiState, vp)
@@ -454,25 +455,20 @@ fun LeafGameScreen(
             // Procedural light rays
             drawLightRays(uiState.runTime, uiState.dayPhase, vp)
 
-            // Speed wind streaks
-            drawSpeedWindStreaks(uiState.runTime, uiState.activePowerUps.any { it.type == PowerUpType.SPEED_BOOST })
-
             // Narrow channel walls
             if (uiState.narrowChannelOffset > 0f) drawNarrowChannel(uiState.narrowChannelOffset, vp)
 
-            // Rolling buffer trail
-            if (uiState.controlSettings.showTrailEffect) {
-                drawRollingTrail(uiState.trailPositions, uiState.leafSkin, uiState.controlSettings.trailDensity, uiState.runTime, vp)
-            }
+            // Trail particles
+            drawTrailParticles(uiState.trailParticles, uiState.leafSkin, vp)
 
             // Obstacles with procedural textures
             drawObstacles(uiState, vp, obstacleSprites)
 
             // Power-up collectibles
-            drawPowerUpCollectibles(uiState.powerUpCollectibles, vp)
+            drawPowerUpCollectibles(uiState.powerUpCollectibles, vp, powerUpBitmaps)
 
             // Boosts
-            drawBoosts(uiState.boosts, vp)
+            drawBoosts(uiState.boosts, vp, boosterBitmaps)
 
             // Collect effects (particles + ring) for boosters / powerups
             drawCollectEffects(uiState.collectEffects, vp)
@@ -480,60 +476,32 @@ fun LeafGameScreen(
             // Leaf with breathing + lean
             drawLeaf(uiState, vp, reusableLeafPath)
 
-            // Shield visual: animated pulsing boundary bubble
+            // Shield visual
             if (uiState.activePowerUps.any { it.type == PowerUpType.SHIELD }) {
-                val c = logicalToScreen(android.graphics.PointF(uiState.leafX, uiState.leafY), vp)
-                val pulse = sin(uiState.runTime * 10f) * 4f * vp.scale
-                val baseRadius = GameConstants.SHIELD_FLASH_RADIUS * vp.scale
-                drawCircle(Color(0x2200E5FF), baseRadius + pulse, Offset(c.x, c.y))
-                drawCircle(Color(0x8800E5FF), baseRadius + pulse, Offset(c.x, c.y), style = Stroke(2f * vp.scale))
-                drawCircle(Color(0x4400E5FF), baseRadius + pulse + 6f * vp.scale, Offset(c.x, c.y), style = Stroke(1.5f * vp.scale))
+                val c = logicalToScreen(PointF(uiState.leafX, uiState.leafY), vp)
+                drawCircle(Color(0x5500AAFF), GameConstants.SHIELD_FLASH_RADIUS * vp.scale, Offset(c.x, c.y), style = Stroke(4f * vp.scale))
             }
 
-            // Magnet visual: rotating dashed-circle aura
-            if (uiState.activePowerUps.any { it.type == PowerUpType.MAGNET }) {
-                val c = logicalToScreen(android.graphics.PointF(uiState.leafX, uiState.leafY), vp)
-                val rotationAngle = uiState.runTime * 45f
-                val pullRadius = GameConstants.MAGNET_PULL_RADIUS * vp.scale
-                drawCircle(
-                    color = Color(0xFFFF4081).copy(alpha = 0.15f),
-                    radius = pullRadius,
-                    center = Offset(c.x, c.y)
-                )
-                withTransform({
-                    rotate(rotationAngle, Offset(c.x, c.y))
-                }) {
-                    drawCircle(
-                        color = Color(0xFFFF4081).copy(alpha = 0.5f),
-                        radius = pullRadius,
-                        center = Offset(c.x, c.y),
-                        style = Stroke(
-                            width = 2f * vp.scale,
-                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
-                                floatArrayOf(15f * vp.scale, 15f * vp.scale),
-                                0f
-                            )
-                        )
-                    )
-                }
-            }
-
-            // Near-miss edge flash overlay
-            if (uiState.controlSettings.showNearMissFlash && uiState.nearMissFlashAlpha > 0f) {
-                val strokeW = 24f * vp.scale
+            // Fog overlay with RadialGradient
+            if (uiState.fogAlpha > 0f) {
                 drawRect(
-                    color = Color.Red.copy(alpha = uiState.nearMissFlashAlpha * 0.4f),
-                    topLeft = Offset(0f, 0f),
-                    size = size,
-                    style = Stroke(width = strokeW)
+                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0f),
+                            Color.White.copy(alpha = uiState.fogAlpha * 0.4f),
+                            Color.White.copy(alpha = uiState.fogAlpha)
+                        ),
+                        center = androidx.compose.ui.geometry.Offset(uiState.leafX * vp.scale, uiState.leafY * vp.scale),
+                        radius = size.width * 0.8f
+                    ),
+                    size = size
                 )
             }
-
-            // Fog overlay
-            if (uiState.fogAlpha > 0f) drawRect(Color.White.copy(alpha = uiState.fogAlpha), size = size)
 
             // Water ripple overlay
             drawWaterRipples(uiState, vp)
+            
+            drawContext.canvas.nativeCanvas.restore()
         }
 
         // ── HUD ──────────────────────────────────────────────────────────────
@@ -545,12 +513,10 @@ fun LeafGameScreen(
                 soundEnabled = uiState.soundEnabled,
                 score = uiState.score,
                 bestScore = uiState.highScore,
-                level = uiState.level,
-                obstaclesCleared = uiState.obstaclesCleared,
+                runTime = uiState.runTime,
+                difficultyFactor = uiState.difficultyFactor,
                 drops = uiState.riverDrops,
-                difficultyLabel = uiState.difficultyPreset.displayName,
                 hudOpacity = uiState.controlSettings.hudOpacity,
-                showSpeedIndicator = uiState.showSpeedIndicator,
                 onPauseToggle = { viewModel.togglePause() },
                 onSettingsRequested = { showSettings = true },
                 onSoundToggle = { viewModel.toggleSound() }
@@ -560,52 +526,6 @@ fun LeafGameScreen(
         // Power-up HUD timers
         AnimatedVisibility(visible = uiState.activePowerUps.isNotEmpty() && uiState.phase == GamePhase.PLAYING) {
             PowerUpHud(Modifier.align(Alignment.TopEnd).padding(end = 16.dp, top = 80.dp), uiState.activePowerUps)
-        }
-
-        // Near-Miss Combo Multiplier Overlay
-        AnimatedVisibility(
-            visible = uiState.phase == GamePhase.PLAYING && uiState.nearMissComboMultiplier > 1,
-            enter = fadeIn() + scaleIn(initialScale = 0.5f),
-            exit = fadeOut()
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 16.dp, top = 80.dp),
-                contentAlignment = Alignment.TopStart
-            ) {
-                val scale by animateFloatAsState(
-                    targetValue = if (uiState.nearMissComboMultiplier > 1) 1.15f else 1.0f,
-                    animationSpec = tween(durationMillis = 200),
-                    label = "comboScale"
-                )
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xCCFF9800)),
-                    modifier = Modifier
-                        .scale(scale)
-                        .border(2.dp, Color(0xFFFFEB3B), RoundedCornerShape(16.dp))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "${uiState.nearMissComboMultiplier}X COMBO",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Black
-                        )
-                        val progress = (uiState.nearMissComboTimer / 3.0f).coerceIn(0f, 1f)
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            color = Color(0xFFFFEB3B),
-                            trackColor = Color.White.copy(alpha = 0.2f),
-                            modifier = Modifier.width(60.dp).height(3.dp).padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
         }
 
         // River event indicator
@@ -657,14 +577,15 @@ fun LeafGameScreen(
                 val prog by animateLottieCompositionAsState(comp, iterations = 1)
                 Box(Modifier.fillMaxSize()) {
                     LottieAnimation(composition = comp, progress = { prog }, modifier = Modifier.fillMaxSize())
-                    GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
-                        uiState.runDropsEarned, uiState.riverDrops, uiState.sensitivitySuggestion,
+                    GameOverScreen(uiState.score, uiState.highScore, uiState.runTime, uiState.bestSurvivalTime, uiState.obstaclesCleared,
+                        uiState.runDropsEarned, uiState.sensitivitySuggestion,
                         onNewRun = { viewModel.startNewRun() },
                         onBackToMenu = onBackToMenu,
                         onShare = {
                             val shareText = buildString {
                                 append("I scored ${uiState.score} in Hydra Leaf!\n")
-                                append("Level ${uiState.level}, ${uiState.obstaclesCleared} hurdles cleared, ${uiState.runDropsEarned} drops earned.")
+                                val formattedTime = String.format("%02d:%02d", (uiState.runTime/60).toInt(), (uiState.runTime%60).toInt())
+                                append("Survived $formattedTime, ${uiState.obstaclesCleared} hurdles cleared, ${uiState.runDropsEarned} drops earned.")
                             }
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
@@ -676,14 +597,15 @@ fun LeafGameScreen(
                     )
                 }
             } else {
-                GameOverScreen(uiState.score, uiState.highScore, uiState.level, uiState.obstaclesCleared,
-                    uiState.runDropsEarned, uiState.riverDrops, uiState.sensitivitySuggestion,
+                GameOverScreen(uiState.score, uiState.highScore, uiState.runTime, uiState.bestSurvivalTime, uiState.obstaclesCleared,
+                    uiState.runDropsEarned, uiState.sensitivitySuggestion,
                     onNewRun = { viewModel.startNewRun() },
                     onBackToMenu = onBackToMenu,
                     onShare = {
                         val shareText = buildString {
                             append("I scored ${uiState.score} in Hydra Leaf!\n")
-                            append("Level ${uiState.level}, ${uiState.obstaclesCleared} hurdles cleared, ${uiState.runDropsEarned} drops earned.")
+                            val formattedTime = String.format("%02d:%02d", (uiState.runTime/60).toInt(), (uiState.runTime%60).toInt())
+                            append("Survived $formattedTime, ${uiState.obstaclesCleared} hurdles cleared, ${uiState.runDropsEarned} drops earned.")
                         }
                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
@@ -704,12 +626,11 @@ fun LeafGameScreen(
                 onRequestCalibrate, { showSettings = false }, { viewModel.resetSettings() },
                 { viewModel.setMusicVolume(it) }, { viewModel.setSfxVolume(it) }, { viewModel.setHapticsEnabled(it) },
                 { viewModel.setHapticIntensity(it) },
-                { viewModel.setDifficultyPreset(it) }, { viewModel.setShowSpeedIndicator(it) }, { viewModel.setShowTrailEffect(it) },
-                { viewModel.setTrailDensity(it) })
+                { viewModel.setDifficultyPreset(it) }, { viewModel.setShowSpeedIndicator(it) }, { viewModel.setShowTrailEffect(it) })
         }
 
         // Debug
-        if (BuildConfig.SHOW_DEBUG_OVERLAY && showDebug) DebugPanel(Modifier.align(Alignment.BottomStart), uiState.debugTelemetry)
+        if ((BuildConfig.SHOW_DEBUG_OVERLAY || uiState.showHitboxDebug) && showDebug) DebugPanel(Modifier.align(Alignment.BottomStart), uiState.debugTelemetry)
 
         // Boost meter
         AnimatedVisibility(visible = uiState.boostActive) {
@@ -721,7 +642,7 @@ fun LeafGameScreen(
 // ── Draw: 5-layer parallax background ────────────────────────────────────────
 
 private fun DrawScope.drawParallaxBackground(ui: GameUiState, vp: ViewportMapping) {
-    val colors = ThemeColors.waterGradient(ui.riverTheme, ui.dayPhase, ui.controlSettings.appTheme)
+    val colors = ThemeColors.waterGradient(ui.riverTheme, ui.dayPhase)
     drawRect(brush = Brush.verticalGradient(colors), size = size, alpha = 0.94f)
 
     // Use configured number of parallax layers for more depth and smoother per-layer motion
@@ -746,28 +667,6 @@ private fun DrawScope.drawParallaxBackground(ui: GameUiState, vp: ViewportMappin
         )
     }
     // TODO-28 DONE: Parallax background enhanced with additional layers and smoother motion
-}
-
-private fun DrawScope.drawSpeedWindStreaks(runTime: Float, speedActive: Boolean) {
-    val count = if (speedActive) 16 else 8
-    val speed = if (speedActive) 1400f else 600f
-    
-    for (i in 0 until count) {
-        val seed = i * 263.17f
-        val x = (seed % 1f) * size.width
-        val speedOffset = (seed * 73.5f) % 1f
-        val y = ((runTime * speed + speedOffset * size.height) % size.height)
-        
-        val length = if (speedActive) 120f else 60f
-        val alpha = if (speedActive) 0.35f else 0.15f
-        
-        drawLine(
-            color = Color.White.copy(alpha = alpha),
-            start = Offset(x, y),
-            end = Offset(x, y + length),
-            strokeWidth = 2f
-        )
-    }
 }
 
 // ── Draw: procedural light rays ──────────────────────────────────────────────
@@ -801,143 +700,6 @@ private fun DrawScope.drawNarrowChannel(offset: Float, vp: ViewportMapping) {
     drawRect(wallColor, topLeft = Offset(size.width - px, 0f), size = Size(px, size.height))
 }
 
-private fun DrawScope.drawRollingTrail(
-    positions: List<android.graphics.PointF>,
-    skin: LeafSkin,
-    density: Float,
-    runTime: Float,
-    vp: ViewportMapping
-) {
-    if (positions.isEmpty()) return
-    
-    val densityAlphaMultiplier = density.coerceIn(0.1f, 1f)
-    val sizeMultiplier = vp.scale
-
-    when (skin) {
-        LeafSkin.NEON -> {
-            val screenPoints = positions.map { logicalToScreen(it, vp) }
-            val path = Path().apply {
-                if (screenPoints.isNotEmpty()) {
-                    moveTo(screenPoints[0].x, screenPoints[0].y)
-                    for (i in 1 until screenPoints.size) {
-                        lineTo(screenPoints[i].x, screenPoints[i].y)
-                    }
-                }
-            }
-            if (screenPoints.isNotEmpty()) {
-                drawPath(
-                    path = path,
-                    color = Color(0xFF00F3B9).copy(alpha = 0.4f * densityAlphaMultiplier),
-                    style = Stroke(width = 16f * sizeMultiplier, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-                drawPath(
-                    path = path,
-                    color = Color.White.copy(alpha = 0.9f * densityAlphaMultiplier),
-                    style = Stroke(width = 6f * sizeMultiplier, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-            }
-        }
-        LeafSkin.FIRE -> {
-            positions.forEachIndexed { index, pt ->
-                val progress = (index + 1) / positions.size.toFloat()
-                val screenPos = logicalToScreen(pt, vp)
-                val driftX = sin(runTime * 8f + index) * 12f * (1f - progress) * sizeMultiplier
-                val driftY = - (1f - progress) * 20f * sizeMultiplier
-                val r = 16f * progress * sizeMultiplier
-                val alpha = progress * 0.85f * densityAlphaMultiplier
-                
-                drawCircle(
-                    color = Color(0xFFFF5722).copy(alpha = alpha),
-                    radius = r,
-                    center = Offset(screenPos.x + driftX, screenPos.y + driftY)
-                )
-                drawCircle(
-                    color = Color(0xFFFFEB3B).copy(alpha = alpha),
-                    radius = r * 0.5f,
-                    center = Offset(screenPos.x + driftX, screenPos.y + driftY)
-                )
-            }
-        }
-        LeafSkin.FROST -> {
-            positions.forEachIndexed { index, pt ->
-                val progress = (index + 1) / positions.size.toFloat()
-                val screenPos = logicalToScreen(pt, vp)
-                val alpha = progress * 0.7f * densityAlphaMultiplier
-                val r = 10f * progress * sizeMultiplier
-                
-                drawCircle(
-                    color = Color(0xFFE0F7FA).copy(alpha = alpha),
-                    radius = r,
-                    center = Offset(screenPos.x, screenPos.y)
-                )
-                
-                if (index % 2 == 0) {
-                    val lineLength = 12f * progress * sizeMultiplier
-                    drawLine(
-                        color = Color.White.copy(alpha = alpha),
-                        start = Offset(screenPos.x - lineLength, screenPos.y),
-                        end = Offset(screenPos.x + lineLength, screenPos.y),
-                        strokeWidth = 2f * sizeMultiplier
-                    )
-                    drawLine(
-                        color = Color.White.copy(alpha = alpha),
-                        start = Offset(screenPos.x, screenPos.y - lineLength),
-                        end = Offset(screenPos.x, screenPos.y + lineLength),
-                        strokeWidth = 2f * sizeMultiplier
-                    )
-                }
-            }
-        }
-        LeafSkin.COSMIC -> {
-            positions.forEachIndexed { index, pt ->
-                val progress = (index + 1) / positions.size.toFloat()
-                val screenPos = logicalToScreen(pt, vp)
-                val alpha = progress * 0.8f * densityAlphaMultiplier
-                
-                drawCircle(
-                    color = Color(0xFF9C27B0).copy(alpha = alpha * 0.5f),
-                    radius = 8f * progress * sizeMultiplier,
-                    center = Offset(screenPos.x, screenPos.y)
-                )
-                
-                val orbitRadius = 14f * (1f - progress + 0.3f) * sizeMultiplier
-                val angle1 = index * 0.6f + runTime * 6f
-                val angle2 = angle1 + PI.toFloat()
-                
-                val orbitX1 = screenPos.x + cos(angle1) * orbitRadius
-                val orbitY1 = screenPos.y + sin(angle1) * orbitRadius
-                drawCircle(
-                    color = Color(0xFFE040FB).copy(alpha = alpha),
-                    radius = 4f * progress * sizeMultiplier,
-                    center = Offset(orbitX1, orbitY1)
-                )
-                
-                val orbitX2 = screenPos.x + cos(angle2) * orbitRadius
-                val orbitY2 = screenPos.y + sin(angle2) * orbitRadius
-                drawCircle(
-                    color = Color(0xFF00E5FF).copy(alpha = alpha),
-                    radius = 3f * progress * sizeMultiplier,
-                    center = Offset(orbitX2, orbitY2)
-                )
-            }
-        }
-        else -> {
-            positions.forEachIndexed { index, pt ->
-                val progress = (index + 1) / positions.size.toFloat()
-                val screenPos = logicalToScreen(pt, vp)
-                val alpha = progress * 0.6f * densityAlphaMultiplier
-                val r = 12f * progress * sizeMultiplier
-                
-                drawCircle(
-                    color = Color.White.copy(alpha = alpha),
-                    radius = r,
-                    center = Offset(screenPos.x, screenPos.y)
-                )
-            }
-        }
-    }
-}
-
 // ── Draw: particle trail ─────────────────────────────────────────────────────
 
 private fun DrawScope.drawTrailParticles(particles: List<TrailParticle>, skin: LeafSkin, vp: ViewportMapping) {
@@ -967,7 +729,7 @@ private fun DrawScope.drawTrailParticles(particles: List<TrailParticle>, skin: L
 // ── Draw: water ripples ──────────────────────────────────────────────────────
 
 private fun DrawScope.drawWaterRipples(ui: GameUiState, vp: ViewportMapping) {
-    val rippleColor = ThemeColors.rippleColor(ui.riverTheme, ui.controlSettings.appTheme)
+    val rippleColor = ThemeColors.rippleColor(ui.riverTheme)
     val cx = size.width * 0.5f; val cy = size.height * 0.65f
     repeat(4) { i ->
         val t = i / 4f
@@ -1012,6 +774,18 @@ private fun DrawScope.drawLeaf(ui: GameUiState, vp: ViewportMapping, reusablePat
             drawLine(Color(0x33006B3C), Offset(center.x, vy), Offset(center.x - wPx * 0.25f, vy + hPx * 0.06f), strokeWidth = 1.2f)
             drawLine(Color(0x33006B3C), Offset(center.x, vy), Offset(center.x + wPx * 0.25f, vy + hPx * 0.06f), strokeWidth = 1.2f)
         }
+        
+        if (ui.showHitboxDebug) {
+            val leafHitboxScale = ui.controlSettings.hitboxShrink * if (ui.boostActive) GameConstants.BOOST_HITBOX_SCALE else GameConstants.BASE_HITBOX_SCALE
+            val hw = wPx * leafHitboxScale
+            val hh = hPx * leafHitboxScale
+            drawRect(
+                color = Color.Green.copy(alpha = 0.5f),
+                topLeft = Offset(center.x - hw * 0.5f, center.y - hh * 0.5f),
+                size = Size(hw, hh),
+                style = Stroke(2f)
+            )
+        }
     }
 }
 
@@ -1027,24 +801,12 @@ private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping, sprite
         val sz = Size(o.width * vp.scale * entryScale, o.height * vp.scale * entryScale)
         val center = Offset(tl.x + sz.width / 2f, tl.y + sz.height / 2f)
         val warningAlpha = o.warningHighlight.coerceIn(0f, 1f)
-        val themeAccent = if (ui.controlSettings.appTheme == AppTheme.LIGHT) {
-            when (ui.riverTheme) {
-                RiverTheme.FOREST -> Color(0xFF1A7A4A)
-                RiverTheme.ARCTIC -> Color(0xFF1A5E7A)
-                RiverTheme.VOLCANIC -> Color(0xFFB3361B)
-                RiverTheme.CRYSTAL -> Color(0xFF651BCA)
-                RiverTheme.MIDNIGHT -> Color(0xFF1B2ECA)
-            }
-        } else if (ui.controlSettings.appTheme == AppTheme.AURORA) {
-            Color(0xFF3DFFA0)
-        } else {
-            when (ui.riverTheme) {
-                RiverTheme.FOREST -> Color(0xFF68C98A)
-                RiverTheme.ARCTIC -> Color(0xFFB7F0FF)
-                RiverTheme.VOLCANIC -> Color(0xFFFF9362)
-                RiverTheme.CRYSTAL -> Color(0xFFB48DFF)
-                RiverTheme.MIDNIGHT -> Color(0xFF7BD7FF)
-            }
+        val themeAccent = when (ui.riverTheme) {
+            RiverTheme.FOREST -> Color(0xFF68C98A)
+            RiverTheme.ARCTIC -> Color(0xFFB7F0FF)
+            RiverTheme.VOLCANIC -> Color(0xFFFF9362)
+            RiverTheme.CRYSTAL -> Color(0xFFB48DFF)
+            RiverTheme.MIDNIGHT -> Color(0xFF7BD7FF)
         }
 
         when (ui.riverTheme) {
@@ -1056,12 +818,12 @@ private fun DrawScope.drawObstacles(ui: GameUiState, vp: ViewportMapping, sprite
         }
 
         // Debug: draw the actual hitbox used for collision checks (scaled by hitbox shrink setting)
-        if (BuildConfig.SHOW_DEBUG_OVERLAY) {
+        if (ui.showHitboxDebug) {
             val hitboxScale = ui.controlSettings.hitboxShrink * if (ui.boostActive) GameConstants.BOOST_HITBOX_SCALE else GameConstants.BASE_HITBOX_SCALE
             val hbW = o.width * hitboxScale * vp.scale
             val hbH = o.height * hitboxScale * vp.scale
             val hbTopLeft = Offset(center.x - hbW * 0.5f, center.y - hbH * 0.5f)
-            drawRect(Color.Magenta.copy(alpha = 0.28f), topLeft = hbTopLeft, size = Size(hbW, hbH), style = Stroke(2f))
+            drawRect(Color.Red.copy(alpha = 0.5f), topLeft = hbTopLeft, size = Size(hbW, hbH), style = Stroke(2f))
         }
     }
 }
@@ -1235,69 +997,77 @@ private fun DrawScope.drawHurdleTextured(tl: PointF, sz: Size, style: HurdleStyl
     if (warning > 0f) drawRoundRect(Color(0xFFFFC107).copy(alpha = warning * 0.6f), offset, sz, cr, style = Stroke(3f * vp.scale))
 }
 
-// ── Draw: power-up collectibles ──────────────────────────────────────────────
+// ── Draw: power-up collectibles ──────────────────────────────────────────────────────────────────
 
-private fun DrawScope.drawPowerUpCollectibles(collectibles: List<PowerUpCollectible>, vp: ViewportMapping) {
+private fun DrawScope.drawPowerUpCollectibles(collectibles: List<PowerUpCollectible>, vp: ViewportMapping, bitmaps: Map<PowerUpType, ImageBitmap>) {
     collectibles.forEach { p ->
         val c = logicalToScreen(PointF(p.x, p.y), vp)
         val r = p.radius * vp.scale
-        val color = when (p.type) {
-            PowerUpType.SHIELD -> Color(0xFF4488FF)
-            PowerUpType.SPEED_BOOST -> Color(0xFFFFCC00)
-            PowerUpType.MAGNET -> Color(0xFFFF4488)
-            PowerUpType.SLOW_TIME -> Color(0xFF88CCFF)
-            PowerUpType.DOUBLE_POINTS -> Color(0xFFFFAA00)
-        }
+        val color = Color(p.type.color)
         drawCircle(color.copy(alpha = 0.3f), r * 1.3f, Offset(c.x, c.y))
         drawCircle(color, r, Offset(c.x, c.y))
-        drawCircle(Color.White.copy(alpha = 0.5f), r * 0.4f, Offset(c.x, c.y))
+        
+        val bmp = bitmaps[p.type]
+        if (bmp != null) {
+            val bmpW = bmp.width.toFloat()
+            val bmpH = bmp.height.toFloat()
+            val scale = (r * 1.2f) / kotlin.math.max(bmpW, bmpH)
+            drawContext.canvas.nativeCanvas.apply {
+                save()
+                translate(c.x, c.y)
+                scale(scale, scale)
+                val paint = android.graphics.Paint().apply {
+                    isAntiAlias = true
+                    colorFilter = android.graphics.PorterDuffColorFilter(
+                        android.graphics.Color.WHITE,
+                        android.graphics.PorterDuff.Mode.SRC_IN
+                    )
+                }
+                drawBitmap(bmp.asAndroidBitmap(), -bmpW / 2f, -bmpH / 2f, paint)
+                restore()
+            }
+        }
     }
+
+    // TODO-24 DONE: Unique booster visuals implemented above.
+    // TODO-25 DONE: Booster/powerup collection effects implemented (local helper defined in composable)
 }
 
 // ── Draw: boosts ─────────────────────────────────────────────────────────────
 
-private fun DrawScope.drawBoosts(boosts: List<BoostState>, vp: ViewportMapping) {
+private fun DrawScope.drawBoosts(boosts: List<BoostState>, vp: ViewportMapping, boosterBitmaps: Map<BoostKind, ImageBitmap>) {
     boosts.forEach { b ->
         val c = logicalToScreen(PointF(b.x, b.y), vp)
         val r = b.radius * vp.scale * (0.82f + b.pulse * 0.2f)
         val alpha = 0.65f + b.pulse * 0.35f
-        val glow = Color(b.kind.color).copy(alpha = 0.18f + b.pulse * 0.15f)
+        val boostColor = Color(b.kind.color)
+        val glow = boostColor.copy(alpha = 0.18f + b.pulse * 0.15f)
         drawCircle(glow, r * 1.55f, Offset(c.x, c.y))
-        when (b.kind) {
-            BoostKind.GHOST -> {
-                drawCircle(Color(0xFFBDEBFF).copy(alpha = alpha), r * 0.9f, Offset(c.x, c.y))
-                drawCircle(Color(0xFFFFFFFF).copy(alpha = 0.35f), r * 0.35f, Offset(c.x, c.y + r * 0.05f))
-            }
-            BoostKind.SPEED -> {
-                drawPath(Path().apply {
-                    moveTo(c.x, c.y - r * 0.8f)
-                    lineTo(c.x + r * 0.24f, c.y - r * 0.1f)
-                    lineTo(c.x + r * 0.02f, c.y - r * 0.1f)
-                    lineTo(c.x + r * 0.18f, c.y + r * 0.8f)
-                    lineTo(c.x - r * 0.12f, c.y + r * 0.1f)
-                    lineTo(c.x + r * 0.08f, c.y + r * 0.1f)
-                    close()
-                }, Color(0xFFFFE45A).copy(alpha = alpha))
-            }
-            BoostKind.SHIELD -> {
-                drawCircle(Color(0xFF55F0C7).copy(alpha = alpha), r * 0.72f, Offset(c.x, c.y), style = Stroke(4f * vp.scale))
-                drawCircle(Color(0xFF55F0C7).copy(alpha = 0.22f), r * 0.95f, Offset(c.x, c.y), style = Stroke(2f * vp.scale))
-            }
-            BoostKind.MAGNET -> {
-                drawCircle(Color(0xFFFF79A8).copy(alpha = alpha), r * 0.72f, Offset(c.x, c.y), style = Stroke(5f * vp.scale))
-                drawLine(Color.White.copy(alpha = 0.85f), Offset(c.x - r * 0.24f, c.y - r * 0.18f), Offset(c.x - r * 0.05f, c.y + r * 0.18f), strokeWidth = 3f * vp.scale)
-                drawLine(Color.White.copy(alpha = 0.85f), Offset(c.x + r * 0.24f, c.y - r * 0.18f), Offset(c.x + r * 0.05f, c.y + r * 0.18f), strokeWidth = 3f * vp.scale)
-            }
-            BoostKind.SLOW_MO -> {
-                drawRoundRect(Color(0xFFB88CFF).copy(alpha = alpha), Offset(c.x - r * 0.22f, c.y - r * 0.55f), Size(r * 0.44f, r * 1.1f), CornerRadius(r * 0.2f), style = Stroke(3f * vp.scale))
-                drawLine(Color.White.copy(alpha = 0.65f), Offset(c.x - r * 0.12f, c.y), Offset(c.x + r * 0.12f, c.y), strokeWidth = 2f * vp.scale)
-            }
-            BoostKind.DOUBLE_SCORE -> {
-                drawCircle(Color(0xFFFF9E2C).copy(alpha = alpha), r * 0.82f, Offset(c.x, c.y))
-                drawCircle(Color(0xFFFFD9A1).copy(alpha = 0.6f), r * 0.5f, Offset(c.x, c.y))
-                drawLine(Color.White, Offset(c.x - r * 0.24f, c.y), Offset(c.x + r * 0.24f, c.y), strokeWidth = 4f * vp.scale)
+        
+        // Circular badge (accent outline + 18% fill)
+        drawCircle(boostColor.copy(alpha = 0.18f), r, Offset(c.x, c.y))
+        drawCircle(boostColor, r, Offset(c.x, c.y), style = Stroke(3f * vp.scale))
+        
+        // Draw the cached SVG bitmap
+        val bmp = boosterBitmaps[b.kind]
+        if (bmp != null) {
+            val bmpW = bmp.width.toFloat()
+            val bmpH = bmp.height.toFloat()
+            val scale = (r * 1.2f) / kotlin.math.max(bmpW, bmpH) // Scale to fit inside badge
+            drawContext.canvas.nativeCanvas.apply {
+                save()
+                translate(c.x, c.y)
+                scale(scale, scale)
+                val paint = android.graphics.Paint().apply {
+                    isAntiAlias = true
+                    this.alpha = (255 * alpha).toInt()
+                }
+                drawBitmap(bmp.asAndroidBitmap(), -bmpW / 2f, -bmpH / 2f, paint)
+                restore()
             }
         }
+        
+        // Highlight reflection
         drawCircle(Color.White.copy(alpha = 0.25f), r * 0.24f, Offset(c.x - r * 0.16f, c.y - r * 0.2f))
     }
 
@@ -1309,8 +1079,8 @@ private fun DrawScope.drawBoosts(boosts: List<BoostState>, vp: ViewportMapping) 
 
 @Composable
 private fun GameOverScreen(
-    score: Int, highScore: Int, level: Int, obstaclesCleared: Int,
-    dropsEarned: Int, totalDrops: Int, suggestion: String?,
+    score: Int, highScore: Int, runTime: Float, bestSurvivalTime: Long, obstaclesCleared: Int,
+    dropsEarned: Int, suggestion: String?,
     onNewRun: () -> Unit, onBackToMenu: () -> Unit, onShare: () -> Unit
 ) {
     val isNewHigh = score >= highScore && score > 0
@@ -1338,9 +1108,12 @@ private fun GameOverScreen(
                 }
                 Text("${animScore.value.toInt()}", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 60.sp), fontWeight = FontWeight.Black, color = Color(0xFF7CF0BF))
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    StatColumn("Level", "$level")
+                    val formattedTime = String.format("%02d:%02d", (runTime/60).toInt(), (runTime%60).toInt())
+                    val bestSec = bestSurvivalTime / 1000L
+                    val formattedBestTime = String.format("%02d:%02d", bestSec / 60, bestSec % 60)
+                    StatColumn("Survived", formattedTime)
+                    StatColumn("Best Time", formattedBestTime)
                     StatColumn("Cleared", "$obstaclesCleared")
-                    StatColumn("Best", "$highScore")
                 }
                 Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF19362D)), shape = RoundedCornerShape(16.dp)) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1349,9 +1122,6 @@ private fun GameOverScreen(
                         Text("+${animDrops.value.toInt()} River Drops", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
-                val startWallet = maxOf(0, totalDrops - dropsEarned)
-                val animWallet = startWallet + animDrops.value.toInt()
-                Text("Wallet Balance: \uD83D\uDCA7 $animWallet", style = MaterialTheme.typography.titleMedium, color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)
                 suggestion?.let {
                     Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f)), shape = RoundedCornerShape(12.dp)) {
                         Text(it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = Color.White)
@@ -1409,11 +1179,16 @@ private fun PowerUpHud(modifier: Modifier, powerUps: List<ActivePowerUp>) {
         powerUps.forEach { pu ->
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)), shape = RoundedCornerShape(12.dp)) {
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(pu.type.icon, fontSize = 16.sp)
+                    Icon(
+                        painter = painterResource(id = pu.type.iconRes),
+                        contentDescription = pu.type.displayName,
+                        tint = Color(pu.type.color),
+                        modifier = Modifier.size(18.dp)
+                    )
                     Spacer(Modifier.width(6.dp))
                     Column {
                         Text(pu.type.displayName, style = MaterialTheme.typography.labelMedium)
-                        LinearProgressIndicator(progress = { pu.progress }, Modifier.width(60.dp).height(4.dp), color = MaterialTheme.colorScheme.primary, trackColor = Color(0x33000000))
+                        LinearProgressIndicator(progress = { pu.progress }, Modifier.width(60.dp).height(4.dp), color = Color(pu.type.color), trackColor = Color(0x33000000))
                     }
                 }
             }
@@ -1444,26 +1219,16 @@ private fun BoxScope.IconHud(
     soundEnabled: Boolean,
     score: Int,
     bestScore: Int,
-    level: Int,
-    obstaclesCleared: Int,
+    runTime: Float,
+    difficultyFactor: Float,
     drops: Int,
-    difficultyLabel: String,
     hudOpacity: Float,
-    showSpeedIndicator: Boolean,
     onPauseToggle: () -> Unit,
     onSettingsRequested: () -> Unit,
     onSoundToggle: () -> Unit
 ) {
     val ts = (38f * iconScale).dp
     val is2 = (20f * iconScale).dp
-    val hurdlesNeeded = when (difficultyLabel.lowercase()) {
-        "easy" -> 10
-        "normal" -> 8
-        "hard" -> 6
-        "extreme" -> 4
-        else -> 6
-    }
-    val levelProgress = (obstaclesCleared % hurdlesNeeded).toFloat() / hurdlesNeeded.toFloat()
     val animatedScore by animateIntAsState(score, label = "hudScore")
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1480,15 +1245,15 @@ private fun BoxScope.IconHud(
                     Text("Best: $bestScore", style = MaterialTheme.typography.labelSmall, color = Color(0xCCFFFFFF))
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("LVL $level", style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                    if (showSpeedIndicator) {
-                        LinearProgressIndicator(
-                            progress = { levelProgress.coerceIn(0f, 1f) },
-                            modifier = Modifier.width(84.dp).height(4.dp),
-                            color = Color(0xFF39D39B),
-                            trackColor = Color.White.copy(alpha = 0.14f)
-                        )
+                    Text("SURVIVAL TIME", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp), color = Color(0xAAFFFFFF))
+                    val formattedTime = String.format("%02d:%02d", (runTime/60).toInt(), (runTime%60).toInt())
+                    // Green -> Yellow -> Orange -> Red based on difficultyFactor
+                    val timerColor = when {
+                        difficultyFactor < 0.33f -> androidx.compose.ui.graphics.lerp(Color(0xFF39D39B), Color(0xFFFFD83D), difficultyFactor * 3f)
+                        difficultyFactor < 0.66f -> androidx.compose.ui.graphics.lerp(Color(0xFFFFD83D), Color(0xFFFF9E2C), (difficultyFactor - 0.33f) * 3f)
+                        else -> androidx.compose.ui.graphics.lerp(Color(0xFFFF9E2C), Color(0xFFFF4B4B), (difficultyFactor - 0.66f) * 3f)
                     }
+                    Text(formattedTime, style = MaterialTheme.typography.labelLarge, color = timerColor, fontWeight = FontWeight.Bold)
                 }
                 Row(
                     modifier = Modifier.weight(1f),
@@ -1503,9 +1268,6 @@ private fun BoxScope.IconHud(
                                     Text("$animatedDrops", style = MaterialTheme.typography.labelMedium, color = Color.White)
                                 }
                     Spacer(Modifier.width(10.dp))
-                    Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0xFF39D39B).copy(alpha = 0.22f)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                        Text(difficultyLabel, color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
                     IconButton(onPauseToggle, Modifier.size(48.dp)) {
                         Icon(if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (isRunning) "Pause" else "Resume", modifier = Modifier.size(is2), tint = Color.White)
                     }
@@ -1559,16 +1321,30 @@ private fun SettingsPanel(
     onCalibrate: () -> Unit, onClose: () -> Unit, onReset: () -> Unit,
     onMusicVolumeChanged: (Float) -> Unit, onSfxVolumeChanged: (Float) -> Unit, onHapticsChanged: (Boolean) -> Unit,
     onHapticIntensityChanged: (HapticIntensity) -> Unit,
-    onDifficultyChanged: (DifficultyPreset) -> Unit, onShowSpeedIndicatorChanged: (Boolean) -> Unit, onShowTrailEffectChanged: (Boolean) -> Unit,
-    onTrailDensityChanged: (Float) -> Unit
+    onDifficultyChanged: (DifficultyPreset) -> Unit, onShowSpeedIndicatorChanged: (Boolean) -> Unit, onShowTrailEffectChanged: (Boolean) -> Unit
 ) {
     var confirmReset by rememberSaveable { mutableStateOf(false) }
+    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     Surface(Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(28.dp), tonalElevation = 8.dp, color = AppColors.backgroundDark) {
         Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClose, Modifier.size(48.dp)) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = AppColors.textPrimary) }
                 Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = AppColors.textPrimary)
             }
+            
+            // Audio & Haptics (Moved to top as requested)
+            SettingsSection("Audio & Haptics") {
+                SettingsSlider("Music ${(settings.musicVolume * 100f).toInt()}%", settings.musicVolume, 0f..1f, onMusicVolumeChanged)
+                SettingsSlider("SFX ${(settings.sfxVolume * 100f).toInt()}%", settings.sfxVolume, 0f..1f, onSfxVolumeChanged)
+                LabeledSwitch("Haptic feedback", settings.hapticsEnabled, onHapticsChanged)
+            }
+
+            // Visuals
+            SettingsSection("Visuals") {
+                LabeledSwitch("Show speed indicator", settings.showSpeedIndicator, onShowSpeedIndicatorChanged)
+                LabeledSwitch("Show trail effect", settings.showTrailEffect, onShowTrailEffectChanged)
+            }
+
             // Control mode
             SettingsSection("Control Mode", "Choose touch drag, tap-steer, or gyroscope.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1583,19 +1359,29 @@ private fun SettingsPanel(
                     }
                 }
             }
-            // Presets
-            SettingsSection("Sensitivity Presets") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (p in SensitivityPreset.entries) {
-                        AssistChip(
-                            modifier = Modifier.heightIn(min = 48.dp).border(1.dp, if (settings.preset == p) AppColors.primaryGreen else AppColors.backgroundCard, RoundedCornerShape(999.dp)),
-                            onClick = { onPresetSelected(p) },
-                            label = { Text(p.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                            colors = AssistChipDefaults.assistChipColors()
-                        )
+            // Expander for Advanced Settings
+            Button(
+                onClick = { advancedExpanded = !advancedExpanded },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AppColors.backgroundCard)
+            ) {
+                Text(if (advancedExpanded) "Hide Advanced Settings" else "Show Advanced Settings", color = AppColors.textPrimary)
+            }
+
+            if (advancedExpanded) {
+                // Presets
+                SettingsSection("Sensitivity Presets") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (p in SensitivityPreset.entries) {
+                            AssistChip(
+                                modifier = Modifier.heightIn(min = 48.dp).border(1.dp, if (settings.preset == p) AppColors.primaryGreen else AppColors.backgroundCard, RoundedCornerShape(999.dp)),
+                                onClick = { onPresetSelected(p) },
+                                label = { Text(p.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                colors = AssistChipDefaults.assistChipColors()
+                            )
+                        }
                     }
                 }
-            }
             SettingsSection("Motion Feel", "Dial in how reactive steering feels.") {
                 SettingsSlider("Sensitivity ${settings.sensitivityMultiplier.fmt(1)}x", settings.sensitivityMultiplier, 0.2f..6f, onSensitivityChanged)
                 SettingsSlider("Tilt Response ${settings.stiffness.fmt(0)}", settings.stiffness, 4f..32f, onStiffnessChanged)
@@ -1638,12 +1424,9 @@ private fun SettingsPanel(
                         )
                     }
                 }
-                LabeledSwitch("Show speed indicator", settings.showSpeedIndicator, onShowSpeedIndicatorChanged)
-                LabeledSwitch("Show trail effect", settings.showTrailEffect, onShowTrailEffectChanged)
-                if (settings.showTrailEffect) {
-                    SettingsSlider("Trail Density ${(settings.trailDensity * 100f).toInt()}%", settings.trailDensity, 0.1f..1.0f, onTrailDensityChanged)
-                }
             }
+            } // end advancedExpanded
+
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onCalibrate) { Text("Calibrate") }
                 OutlinedButton(onClick = { confirmReset = true }) { Text("Reset") }

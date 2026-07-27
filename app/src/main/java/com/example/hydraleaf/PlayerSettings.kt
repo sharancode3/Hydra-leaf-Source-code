@@ -13,12 +13,12 @@ enum class HapticIntensity(val displayName: String) { OFF("Off"), LOW("Low"), ME
 enum class GamePhase { IDLE, CALIBRATING, COUNTDOWN, PLAYING, PAUSED, DEAD, GAME_OVER }
 
 // ── Power-ups ────────────────────────────────────────────────────────────────
-enum class PowerUpType(val displayName: String, val durationSec: Float, val icon: String) {
-    SHIELD("Shield", 5f, "\uD83D\uDEE1"),
-    SPEED_BOOST("Speed+", 4f, "\u26A1"),
-    MAGNET("Magnet", 6f, "\uD83E\uDDF2"),
-    SLOW_TIME("Slow-Mo", 5f, "\u23F3"),
-    DOUBLE_POINTS("2\u00D7 Pts", 8f, "\u2728")
+enum class PowerUpType(val displayName: String, val durationSec: Float, @androidx.annotation.DrawableRes val iconRes: Int, val color: Long) {
+    SHIELD("Shield", 5f, R.drawable.ic_boost_shield, 0xFF44F0C5),
+    SPEED_BOOST("Speed+", 4f, R.drawable.ic_boost_speed, 0xFFFFD83D),
+    MAGNET("Magnet", 6f, R.drawable.ic_boost_magnet, 0xFFFF6AA8),
+    SLOW_TIME("Slow-Mo", 5f, R.drawable.ic_boost_slow, 0xFFB88CFF),
+    DOUBLE_POINTS("2× Pts", 8f, R.drawable.ic_boost_double, 0xFFFF9E2C)
 }
 
 // ── River Events ─────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ enum class AchievementType(
 
 data class RunRecord(
     val score: Int,
-    val level: Int,
+    val survivalTimeSecs: Int,
     val drops: Int,
     val obstaclesCleared: Int = 0,
     val durationSec: Float,

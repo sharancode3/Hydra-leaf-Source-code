@@ -77,6 +77,7 @@ data class GameUiState(
     val obstacles: List<ObstacleState> = emptyList(),
     val score: Int = 0,
     val highScore: Int = 0,
+    val bestSurvivalTime: Long = 0L,
     val phase: GamePhase = GamePhase.IDLE,
     val controlSettings: ControlSettings = ControlSettings(),
     val obstaclesCleared: Int = 0,
@@ -95,6 +96,7 @@ data class GameUiState(
     val boosts: List<BoostState> = emptyList(),
     val boostActive: Boolean = false,
     val boostTimeRemaining: Float = 0f,
+    val activeBoostKind: BoostKind? = null,
     val countdownValue: Int = 0,
     val deathAnimProgress: Float = 0f,
     val touchTargetX: Float? = null,
@@ -133,19 +135,27 @@ data class GameUiState(
     val leafLeanAngle: Float = 0f,
     val adaptiveDifficulty: AdaptiveDifficulty = AdaptiveDifficulty(),
     val dailyChallenge: DailyChallenge? = null,
-    val nearMissComboMultiplier: Int = 1,
+    val nearMissComboMultiplier: Float = 1f,
+    val consecutiveDodges: Int = 0,
     val nearMissComboTimer: Float = 0f,
     val nearMissFlashAlpha: Float = 0f,
+    val vignetteFlashAlpha: Float = 0f,
+    val vignetteFlashColor: Int = 0,
+    val cameraShakeAmount: Float = 0f,
     val runTime: Float = 0f,
+    val difficultyFactor: Float = 0f,
+    val easedFactor: Float = 0f,
     val fogAlpha: Float = 0f,
     val narrowChannelOffset: Float = 0f,
+    val eventWarningText: String? = null,
     val runDropsEarned: Int = 0,
     val sensitivitySuggestion: String? = null,
     val recentUnlock: AchievementType? = null,
     val recentCelebration: String? = null,
     val collectEffects: List<CollectEffectState> = emptyList(),
     val challengeStreak: Int = 0,
-    val lastChallengeDayIndex: Int = -1
+    val lastChallengeDayIndex: Int = -1,
+    val showHitboxDebug: Boolean = false
 ) {
     val gameState: GameState get() = when (phase) {
         GamePhase.PLAYING, GamePhase.COUNTDOWN, GamePhase.CALIBRATING -> GameState.RUNNING
@@ -154,7 +164,7 @@ data class GameUiState(
     }
 }
 
-data class CollectEffectState(val x: Float, val y: Float, val age: Float, val kind: String, val value: Int = 0, val text: String? = null)
+data class CollectEffectState(val x: Float, val y: Float, val age: Float, val kind: String, val value: Int = 0, val text: String? = null, val combo: Float = 1.0f, val hasDiffBonus: Boolean = false)
 
 enum class GameState { RUNNING, PAUSED, GAME_OVER }
 
@@ -175,7 +185,7 @@ private data class ObstacleEntity(
     var warningHighlight: Float = 0f, var warningTriggered: Boolean = false
 )
 
-    private data class CollectEffect(var x: Float, var y: Float, var age: Float = 0f, val kind: String = "boost", val value: Int = 0, val text: String? = null)
+    private data class CollectEffect(var x: Float, var y: Float, var age: Float = 0f, val kind: String = "boost", val value: Int = 0, val text: String? = null, val combo: Float = 1.0f, val hasDiffBonus: Boolean = false)
 
     private val activeCollectEffects = mutableListOf<CollectEffect>()
 
@@ -221,12 +231,14 @@ class GameViewModel @Inject constructor(
     private var currentCorridorWidthColumns = 2
     private val recentObstaclePatterns = ArrayDeque<ObstaclePattern>()
     private var hardPatternStreak = 0
+    private var forceRecoveryRow = false
 
     private val boostPool = ArrayDeque<BoostEntity>()
     private val activeBoosts = mutableListOf<BoostEntity>()
     private var boostSpawnTimer = GameConstants.BOOST_SPAWN_INTERVAL
     private var nextBoostId = 0L
     private var boostTimer = 0f
+    private var activeBoostKind: BoostKind? = null
 
     private val powerUpPool = ArrayDeque<PowerUpEntity>()
     private val activePowerUpEntities = mutableListOf<PowerUpEntity>()
@@ -245,9 +257,18 @@ class GameViewModel @Inject constructor(
     private var trailBufferAccumulator = 0f
     private val isPausedRef = java.util.concurrent.atomic.AtomicBoolean(false)
     private var nearMissSfxCooldown = 0f
-    private var nearMissComboMultiplier = 1
+    private var nearMissComboMultiplier = 1f
+    private var consecutiveDodges = 0
+    private var runScore = 0f
+    private var passiveScoreAccumulator = 0f
     private var nearMissComboTimer = 0f
     private var nearMissFlashAlpha = 0f
+    private var vignetteFlashAlpha = 0f
+    private var vignetteFlashColor = 0
+    private var cameraShakeAmount = 0f
+    private var eventWarningText: String? = null
+    private var eventWarningTimer = 0f
+    private var pendingEvent: RiverEventType? = null
 
     // Adaptive difficulty
     private val recentDodges = ArrayDeque<Boolean>()
@@ -311,6 +332,7 @@ class GameViewModel @Inject constructor(
             )
         } }
         viewModelScope.launch { playerSettingsStore.highScoreFlow.collectLatest { _uiState.value = _uiState.value.copy(highScore = it) } }
+        viewModelScope.launch { playerSettingsStore.bestSurvivalTimeFlow.collectLatest { _uiState.value = _uiState.value.copy(bestSurvivalTime = it) } }
         viewModelScope.launch { playerSettingsStore.lastScoreFlow.collectLatest { _uiState.value = _uiState.value.copy(lastScore = it) } }
         viewModelScope.launch { playerSettingsStore.totalGamesPlayedFlow.collectLatest {
             totalGamesPlayed = it
@@ -339,6 +361,7 @@ class GameViewModel @Inject constructor(
     }
 
     private fun showCelebration(message: String) = viewModelScope.launch {
+        audioEngine.playPurchase()
         _uiState.value = _uiState.value.copy(recentCelebration = message)
         delay(1600)
         _uiState.value = _uiState.value.copy(recentCelebration = null)
@@ -398,6 +421,10 @@ class GameViewModel @Inject constructor(
         }
     }
 
+    fun toggleHitboxDebug() {
+        _uiState.value = _uiState.value.copy(showHitboxDebug = !_uiState.value.showHitboxDebug)
+    }
+
     fun resume() = resumeFromPause()
     fun pauseForBackground() {
         val cur = _uiState.value
@@ -414,6 +441,7 @@ class GameViewModel @Inject constructor(
         _uiState.value = freshUiState().copy(
             phase = GamePhase.IDLE,
             highScore = _uiState.value.highScore,
+            bestSurvivalTime = _uiState.value.bestSurvivalTime,
             controlSettings = _settings.value,
             soundEnabled = _uiState.value.soundEnabled,
             leafSkin = activeSkin,
@@ -463,6 +491,8 @@ class GameViewModel @Inject constructor(
     private fun transitionToGameOver() {
         val cur = _uiState.value
         if (cur.score > cur.highScore) viewModelScope.launch { playerSettingsStore.setHighScore(cur.score) }
+        val currentRunTimeMs = (runTime * 1000).toLong()
+        if (currentRunTimeMs > cur.bestSurvivalTime) viewModelScope.launch { playerSettingsStore.setBestSurvivalTime(currentRunTimeMs) }
         val completedDaily = cur.dailyChallenge?.let { daily ->
             val current = currentChallengeProgress(daily.type, cur.score)
             val target = challengeTarget(daily.type)
@@ -500,7 +530,7 @@ class GameViewModel @Inject constructor(
             playerSettingsStore.recordRun(
                 RunRecord(
                     score = cur.score,
-                    level = cur.level,
+                    survivalTimeSecs = cur.runTime.toInt(),
                     drops = runDrops,
                     obstaclesCleared = cur.obstaclesCleared,
                     durationSec = runTime,
@@ -799,18 +829,42 @@ class GameViewModel @Inject constructor(
         }
 
         // ── River event update ───────────────────────────────────────────────
-        eventTimer -= dt
-        if (eventTimer <= 0f && currentEvent == null) {
-            val eventType = RiverEventType.entries[Random.nextInt(RiverEventType.entries.size)]
-            currentEvent = ActiveRiverEvent(eventType, eventType.baseDuration)
-            eventTimer = 0f
+        if (eventWarningTimer > 0f) {
+            eventWarningTimer -= dt
+            if (eventWarningTimer <= 0f) {
+                val pEvent = pendingEvent ?: RiverEventType.FOG
+                val duration = if (pEvent == RiverEventType.FOG) (8f + Random.nextFloat() * 4f) else pEvent.baseDuration
+                currentEvent = ActiveRiverEvent(pEvent, duration, duration)
+                eventWarningText = null
+                pendingEvent = null
+            }
+        } else if (currentEvent == null) {
+            eventTimer -= dt
+            if (eventTimer <= 0f) {
+                var eventType = RiverEventType.entries[Random.nextInt(RiverEventType.entries.size)]
+                if (eventType == RiverEventType.FOG && runTime < 30f) {
+                    val nonFog = RiverEventType.entries.filter { it != RiverEventType.FOG }
+                    eventType = nonFog[Random.nextInt(nonFog.size)]
+                }
+                
+                if (eventType == RiverEventType.FOG) {
+                    pendingEvent = eventType
+                    eventWarningText = "Fog incoming..."
+                    eventWarningTimer = 1.5f
+                    eventTimer = 0f
+                } else {
+                    currentEvent = ActiveRiverEvent(eventType, eventType.baseDuration)
+                    eventTimer = 0f
+                }
+            }
         }
         currentEvent?.let { ev ->
             val remaining = ev.remainingTime - dt
             if (remaining <= 0f) {
                 runDrops += GameConstants.DROPS_PER_EVENT_SURVIVE
+                val wasFog = ev.type == RiverEventType.FOG
                 currentEvent = null
-                eventTimer = GameConstants.EVENT_MIN_INTERVAL + Random.nextFloat() * (GameConstants.EVENT_MAX_INTERVAL - GameConstants.EVENT_MIN_INTERVAL)
+                eventTimer = if (wasFog) 25f else (GameConstants.EVENT_MIN_INTERVAL + Random.nextFloat() * (GameConstants.EVENT_MAX_INTERVAL - GameConstants.EVENT_MIN_INTERVAL))
             } else {
                 currentEvent = ev.copy(remainingTime = remaining)
             }
@@ -857,8 +911,11 @@ class GameViewModel @Inject constructor(
 
         // ── Boost spawn ──────────────────────────────────────────────────────
         boostSpawnTimer -= dt
-        if (boostSpawnTimer <= 0f) { spawnBoost(); boostSpawnTimer = (GameConstants.BOOST_SPAWN_INTERVAL + Random.nextFloat() * GameConstants.BOOST_SPAWN_VARIATION) * difficultyPowerUpMultiplier }
+        if (boostSpawnTimer <= 0f) { spawnBoost(); boostSpawnTimer = (DifficultyCalculator.boostSpawnInterval(runTime) + Random.nextFloat() * GameConstants.BOOST_SPAWN_VARIATION) * difficultyPowerUpMultiplier }
         boostTimer = max(0f, boostTimer - dt)
+        if (boostTimer <= 0f) {
+            activeBoostKind = null
+        }
 
         // ── Leaf physics ─────────────────────────────────────────────────────
         var leafX = cur.leafX; var vx = cur.leafVelocityX
@@ -916,47 +973,79 @@ class GameViewModel @Inject constructor(
         val magnetActive = activePowerUpTimers.containsKey(PowerUpType.MAGNET)
 
         // ── Update collectibles ──────────────────────────────────────────────
+        val startTickDrops = runDrops
         val boostCollected = updateBoosts(effectiveDt, leafRect, magnetActive)
         if (boostCollected) boostTimer = GameConstants.BOOST_DURATION
         val boostActive = boostTimer > 0f
 
         updatePowerUps(effectiveDt, leafRect, magnetActive)
         nearMissSfxCooldown = max(0f, nearMissSfxCooldown - effectiveDt)
-        nearMissComboTimer = max(0f, nearMissComboTimer - dt)
-        if (nearMissComboTimer <= 0f) {
-            nearMissComboMultiplier = 1
-        }
         nearMissFlashAlpha = max(0f, nearMissFlashAlpha - dt * 5f)
+        vignetteFlashAlpha = max(0f, vignetteFlashAlpha - dt * 3.5f)
+        cameraShakeAmount = max(0f, cameraShakeAmount - dt * 60f)
+
+        // Calculate difficulty factor and eased factor
+        val elapsedSeconds = runTime
+        val difficultyFactor = minOf(1.0f, elapsedSeconds / 300.0f)
+        val easedFactor = difficultyFactor * difficultyFactor * (3.0f - 2.0f * difficultyFactor)
 
         // Update obstacles
-        val obstResult = updateObstacles(effectiveDt, leafRect, cur.level, cur.score, speedMult, cur.difficultyPreset)
-        if (obstResult.collided && shieldActive) {
-            activePowerUpTimers.remove(PowerUpType.SHIELD)
-            audioEngine.playShieldBreak()
+        val breathScale = 1f + GameConstants.LEAF_BREATH_AMPLITUDE * sin(runTime * 2f * Math.PI.toFloat() / GameConstants.LEAF_BREATH_PERIOD)
+        val obstResult = updateObstacles(effectiveDt, leafX, leafY, breathScale, leafRect, 1, cur.score, speedMult, cur.difficultyPreset)
+        if (obstResult.collided) {
+            cameraShakeAmount = 15f
         }
         val collided = obstResult.collided && !boostActive && !shieldActive
         if (collided) {
-            nearMissComboMultiplier = 1
-            nearMissComboTimer = 0f
+            if (shieldActive) {
+                activePowerUpTimers.remove(PowerUpType.SHIELD)
+                audioEngine.playShieldBreak()
+            }
+            consecutiveDodges = 0
+            nearMissComboMultiplier = 1f
         }
 
         // ── Scoring ──────────────────────────────────────────────────────────
         val doublePoints = activePowerUpTimers.containsKey(PowerUpType.DOUBLE_POINTS)
         val pointsMul = if (doublePoints) 2 else 1
-        val newScore = cur.score + obstResult.pointsEarned * pointsMul * nearMissComboMultiplier
-        val clearedTotal = cur.obstaclesCleared + obstResult.cleared
-        val hurdlesNeeded = when (cur.difficultyPreset) {
-            DifficultyPreset.EASY -> 10
-            DifficultyPreset.NORMAL -> 8
-            DifficultyPreset.HARD -> 6
-            DifficultyPreset.EXTREME -> 4
+
+        // 1. Clear score & combo multiplier update
+        if (obstResult.cleared > 0) {
+            consecutiveDodges += obstResult.cleared
+            nearMissComboMultiplier = calculateComboMultiplier(consecutiveDodges)
+            val difficultyBonus = 1.0f + difficultyFactor
+            val clearPoints = 10f * nearMissComboMultiplier * difficultyBonus * obstResult.cleared * pointsMul
+            runScore += clearPoints
+
+            // Spawn redesigned pure-text float popup for cleared score
+            activeCollectEffects.add(
+                CollectEffect(
+                    x = leafX,
+                    y = leafY - GameConstants.LEAF_HEIGHT * 0.5f,
+                    age = 0f,
+                    kind = "score",
+                    value = clearPoints.toInt(),
+                    combo = nearMissComboMultiplier,
+                    hasDiffBonus = difficultyFactor > 0f
+                )
+            )
         }
-        val newLevel = 1 + clearedTotal / hurdlesNeeded
-        if (newLevel > cur.level) {
-            audioEngine.playLevelUp()
-            activeObstacles.clear()
-        }
+
+        // 2. Passive score accumulation
+        val passiveGained = difficultyFactor * 2f * effectiveDt
+        runScore += passiveGained
+
+        // 3. Drops collected
         runDrops += obstResult.cleared * GameConstants.DROPS_PER_CLEAR
+        val dropsCollected = runDrops - startTickDrops
+        if (dropsCollected > 0) {
+            runScore += dropsCollected * 5f
+        }
+
+        val newScore = runScore.toInt()
+        val clearedTotal = cur.obstaclesCleared + obstResult.cleared
+        val newLevel = 1
+
         if (obstResult.cleared > 0) {
             // spawn small drop collect effects around the leaf to indicate earned River Drops
             repeat(min(6, obstResult.cleared)) {
@@ -966,11 +1055,11 @@ class GameViewModel @Inject constructor(
             }
         }
 
-        if (cur.dailyChallenge?.type == ChallengeType.FOG_ONLY && currentEvent?.type == RiverEventType.FOG) {
+        if (currentEvent?.type == RiverEventType.FOG) {
             fogClearsThisRun += obstResult.cleared
         }
         if (cur.dailyChallenge?.type == ChallengeType.CALM_ONLY && currentEvent?.type == RiverEventType.CALM_WATERS) {
-            calmPointsThisRun += obstResult.pointsEarned * pointsMul
+            calmPointsThisRun += obstResult.cleared * 10 * pointsMul
         }
         if (cur.dailyChallenge?.type == ChallengeType.DOUBLE_HURDLES) {
             doubleRowsClearedThisRun += obstResult.clearedDoubleRowTokens.size
@@ -988,7 +1077,8 @@ class GameViewModel @Inject constructor(
         trailSpawnAccum += dt
         while (trailSpawnAccum >= GameConstants.TRAIL_SPAWN_RATE) {
             trailSpawnAccum -= GameConstants.TRAIL_SPAWN_RATE
-            if (trailParticles.size < GameConstants.TRAIL_MAX_PARTICLES) {
+            val maxParticles = (GameConstants.TRAIL_MAX_PARTICLES * _settings.value.trailDensity).toInt().coerceAtLeast(1)
+            if (trailParticles.size < maxParticles) {
                 trailParticles.add(ParticleEntity(
                     x = leafX + (Random.nextFloat() - 0.5f) * GameConstants.LEAF_WIDTH * 0.5f,
                     y = leafY + GameConstants.LEAF_HEIGHT * 0.3f,
@@ -1026,7 +1116,6 @@ class GameViewModel @Inject constructor(
         }
 
         // ── Leaf animations ──────────────────────────────────────────────────
-        val breathScale = 1f + GameConstants.LEAF_BREATH_AMPLITUDE * sin(runTime * 2f * Math.PI.toFloat() / GameConstants.LEAF_BREATH_PERIOD)
         val leanAngle = (vx / 600f).coerceIn(-1f, 1f) * GameConstants.LEAF_MAX_LEAN_DEG
 
         // ── Audio intensity ──────────────────────────────────────────────────
@@ -1058,12 +1147,14 @@ class GameViewModel @Inject constructor(
             targetX = targetX, targetY = targetY,
             obstacles = activeObstacles.map { o -> ObstacleState(o.id, o.x, o.y, o.width, o.height, o.warningHighlight, o.kind, o.style, o.pattern, o.variant, o.driftPhase, o.entryAge.coerceIn(0f, 0.3f) / 0.3f) },
             score = newScore, highScore = highScore,
+            bestSurvivalTime = cur.bestSurvivalTime,
             obstaclesCleared = clearedTotal, level = newLevel,
             phase = if (collided) GamePhase.DEAD else _uiState.value.phase,
             lastTiltSample = tiltSample, lastDeltaTime = dt,
             debugTelemetry = debugTelemetry,
             boosts = activeBoosts.map { BoostState(it.id, it.x, it.y, it.radius, it.kind, (it.age / 0.4f).coerceIn(0f, 1f)) },
             boostActive = boostActive, boostTimeRemaining = boostTimer,
+            activeBoostKind = activeBoostKind,
             activePowerUps = activePowerUpList,
             powerUpCollectibles = activePowerUpEntities.map { PowerUpCollectible(it.id, it.x, it.y, it.radius, it.type) },
             activeRiverEvent = currentEvent,
@@ -1071,13 +1162,22 @@ class GameViewModel @Inject constructor(
             dayPhase = dayPhase, dayCycleProgress = dayProgress,
             trailParticles = trailParticles.map { TrailParticle(it.x, it.y, it.life / it.maxLife, it.size, (it.life / it.maxLife).coerceIn(0f, 1f)) },
             trailPositions = trailPositions.toList(),
-            collectEffects = activeCollectEffects.map { CollectEffectState(it.x, it.y, it.age, it.kind, it.value, it.text) },
+            collectEffects = activeCollectEffects.map { CollectEffectState(it.x, it.y, it.age, it.kind, it.value, it.text, it.combo, it.hasDiffBonus) },
             nearMissComboMultiplier = nearMissComboMultiplier,
+            consecutiveDodges = consecutiveDodges,
             nearMissComboTimer = nearMissComboTimer,
             nearMissFlashAlpha = nearMissFlashAlpha,
+            vignetteFlashAlpha = vignetteFlashAlpha,
+            vignetteFlashColor = vignetteFlashColor,
+            cameraShakeAmount = cameraShakeAmount,
             leafBreathScale = breathScale, leafLeanAngle = leanAngle,
             adaptiveDifficulty = adaptiveDiff,
-            runTime = runTime, fogAlpha = fogAlpha, narrowChannelOffset = narrowOffset
+            runTime = runTime,
+            difficultyFactor = difficultyFactor,
+            easedFactor = easedFactor,
+            fogAlpha = fogAlpha,
+            narrowChannelOffset = narrowOffset,
+            eventWarningText = eventWarningText
         )
 
         if (collided) { transitionToDead() }
@@ -1085,23 +1185,33 @@ class GameViewModel @Inject constructor(
 
     // ── Obstacle logic ───────────────────────────────────────────────────────
 
-    private fun updateObstacles(dt: Float, leafRect: RectF, level: Int, score: Int, speedMult: Float, difficultyPreset: DifficultyPreset): ObstacleUpdateResult {
+    private fun updateObstacles(
+        dt: Float,
+        leafX: Float,
+        leafY: Float,
+        leafBreathScale: Float,
+        leafRect: RectF,
+        level: Int,
+        score: Int,
+        speedMult: Float,
+        difficultyPreset: DifficultyPreset
+    ): ObstacleUpdateResult {
+        val difficultyFactor = minOf(1.0f, runTime / 300.0f)
+        val easedFactor = DifficultyCalculator.easedFactor(runTime)
+
         spawnTimer -= dt
         if (spawnTimer <= 0f) {
-            if (canSpawnRow(level)) {
-                spawnSafeRow(level, difficultyPreset)
-                val baseInterval = GameConstants.OBSTACLE_SPAWN_INTERVAL
-                val minInterval = GameConstants.SPAWN_INTERVAL_FLOOR
-                val scoreFactor = score / 600f
-                val levelFactor = (level - 1) * 0.05f
+            if (canSpawnRow(easedFactor)) {
+                spawnSafeRow(easedFactor, difficultyPreset)
                 val difficultySpawnFactor = when (difficultyPreset) {
                     DifficultyPreset.EASY -> 1.25f
                     DifficultyPreset.NORMAL -> 1f
                     DifficultyPreset.HARD -> 0.85f
                     DifficultyPreset.EXTREME -> 0.72f
                 }
-                val diffScale = max(GameConstants.SPEED_HARD_FLOOR, 1f - scoreFactor - levelFactor) * adaptiveDiff.spawnRateMultiplier * difficultySpawnFactor
-                spawnTimer = max(minInterval, baseInterval * diffScale)
+                // Exponential spawn tightening via DifficultyCalculator
+                val baseInterval = DifficultyCalculator.obstacleSpawnInterval(runTime)
+                spawnTimer = baseInterval * difficultySpawnFactor * adaptiveDiff.spawnRateMultiplier
             } else {
                 spawnTimer = 0.08f
             }
@@ -1123,25 +1233,40 @@ class GameViewModel @Inject constructor(
             if (o.warningHighlight > 0f) o.warningHighlight = max(0f, o.warningHighlight - dt * 1.25f)
             // Visual rectangle (what's drawn) and a tighter collision hitbox tuned per obstacle kind
             val visualRect = RectF(o.x - o.width * 0.5f, o.y - o.height * 0.5f, o.x + o.width * 0.5f, o.y + o.height * 0.5f)
-            val kindScale = when (o.kind) {
-                ObstacleKind.ROCK -> 0.72f
-                ObstacleKind.LOG -> 0.86f
-                else -> 0.8f
-            }
-            val obstacleHitboxScale = kindScale
-            val oHitW = o.width * obstacleHitboxScale
-            val oHitH = o.height * obstacleHitboxScale
-            val oR = RectF(o.x - oHitW * 0.5f, o.y - oHitH * 0.5f, o.x + oHitW * 0.5f, o.y + oHitH * 0.5f)
-            // Use improved collision detection that treats the leaf as a rounded/elliptical body
-            val intersects = detectCollision(leafRect, oR)
-            // TODO-21 DONE: Accurate obstacle hitboxes using ellipse/rect intersection
+
+            val theme = _uiState.value.riverTheme
+            val shape = getObstacleShape(theme, o.kind, o.pattern, o.variant)
+            val intersects = detectCollision(leafX, leafY, leafBreathScale, o, theme)
             if (!collided && intersects) collided = true
+
+            val obstacleHitbox = when (shape) {
+                ObstacleShape.CIRCULAR -> {
+                    val visualRadius = minOf(o.width, o.height) * (if (theme == RiverTheme.FOREST) 0.44f else 0.46f)
+                    val obstacleRadius = visualRadius * 0.78f
+                    RectF(o.x - obstacleRadius, o.y - obstacleRadius, o.x + obstacleRadius, o.y + obstacleRadius)
+                }
+                ObstacleShape.RECTANGULAR -> {
+                    val left = o.x - o.width * 0.5f
+                    val top = o.y - o.height * 0.5f
+                    val right = o.x + o.width * 0.5f
+                    val bottom = o.y + o.height * 0.5f
+                    RectF(left + 8f, top + 8f, right - 8f, bottom - 8f)
+                }
+                ObstacleShape.ORGANIC -> {
+                    RectF(
+                        o.x - o.width * 0.5f * 0.80f,
+                        o.y - o.height * 0.5f * 0.80f,
+                        o.x + o.width * 0.5f * 0.80f,
+                        o.y + o.height * 0.5f * 0.80f
+                    )
+                }
+            }
 
             // Use the visual rect for verticalOverlap/near-miss checks so the near-miss UX aligns with visuals
             val verticalOverlap = min(leafRect.bottom, visualRect.bottom) - max(leafRect.top, visualRect.top)
             if (!intersects && verticalOverlap >= GameConstants.NEAR_MISS_MIN_VERTICAL_OVERLAP) {
-                val leftGap = leafRect.left - oR.right
-                val rightGap = oR.left - leafRect.right
+                val leftGap = leafRect.left - obstacleHitbox.right
+                val rightGap = obstacleHitbox.left - leafRect.right
                 val edgeClearance = when {
                     leftGap >= 0f -> leftGap
                     rightGap >= 0f -> rightGap
@@ -1175,8 +1300,6 @@ class GameViewModel @Inject constructor(
                     if (_settings.value.showNearMissFlash) {
                         nearMissFlashAlpha = 0.6f
                     }
-                    nearMissComboMultiplier = Math.min(3, nearMissComboMultiplier + 1)
-                    nearMissComboTimer = 3f
                     nearMissesThisRun++
                 }
                 audioEngine.playDodge(Random.nextInt(5))
@@ -1188,10 +1311,10 @@ class GameViewModel @Inject constructor(
         return ObstacleUpdateResult(pts, collided, cleared, clearedRowTokens, clearedDoubleRowTokens)
     }
 
-    private fun canSpawnRow(level: Int): Boolean {
+    private fun canSpawnRow(easedFactor: Float): Boolean {
         val maxRowsVisible = when {
-            level <= 1 -> 2
-            level <= 4 -> 3
+            easedFactor <= 0.1f -> 2
+            easedFactor <= 0.6f -> 3
             else -> 4
         }
         val visibleRows = activeObstacles
@@ -1203,52 +1326,68 @@ class GameViewModel @Inject constructor(
 
         val latestRowY = activeObstacles.minOfOrNull { it.y }
         if (latestRowY != null) {
-            val requiredSpacing = if (level <= 1) GameConstants.LEVEL1_MIN_ROW_SPACING else GameConstants.MIN_ROW_SPACING
+            val requiredSpacing = if (easedFactor <= 0.1f) GameConstants.LEVEL1_MIN_ROW_SPACING else GameConstants.MIN_ROW_SPACING
             val spawnCenterY = -GameConstants.OBSTACLE_HEIGHT
             if (latestRowY - spawnCenterY < requiredSpacing) return false
         }
         return true
     }
 
-    private fun spawnSafeRow(level: Int, difficultyPreset: DifficultyPreset) {
+    private fun spawnSafeRow(easedFactor: Float, difficultyPreset: DifficultyPreset) {
         val vw = GameConstants.VIRTUAL_WIDTH
         val columns = 5
         val columnWidth = vw / columns
-        val corridorWidthColumns = when (difficultyPreset) {
-            DifficultyPreset.EASY -> 2
-            DifficultyPreset.NORMAL -> if (level < 5) 2 else 1
-            DifficultyPreset.HARD -> 1
-            DifficultyPreset.EXTREME -> 1
+        val floatCorridor = lerp(2.0f, 1.0f, easedFactor)
+        
+        // Force open recovery rows after 3 hard patterns
+        val corridorWidthColumns = if (forceRecoveryRow) {
+            forceRecoveryRow = false
+            3
+        } else if (difficultyPreset == DifficultyPreset.EASY) {
+            2
+        } else {
+            Math.round(floatCorridor).toInt().coerceIn(1, 2)
         }
+        
         val rowToken = nextRowToken++
-        val pattern = selectObstaclePattern(level)
-        // Pick one of 4 hurdle styles based on level progression and current river theme.
-        val style = HurdleStyle.entries[((level - 1) / 3).coerceIn(0, HurdleStyle.entries.size - 1)]
-        val corridorStartColumn = selectCorridorStart(columns, corridorWidthColumns, pattern)
+        val pattern = selectObstaclePattern(easedFactor)
+        val style = HurdleStyle.entries[Math.round(easedFactor * (HurdleStyle.entries.size - 1)).toInt().coerceIn(0, HurdleStyle.entries.size - 1)]
+        
+        // Keep corridor in place for 1-2 rows after every 8 obstacles (rest moments)
+        val isRestMoment = (rowToken % 10 == 8 || rowToken % 10 == 9)
+        val corridorStartColumn = if (isRestMoment && currentCorridorColumn >= 0) {
+            currentCorridorColumn
+        } else {
+            selectCorridorStart(columns, corridorWidthColumns, pattern)
+        }
+        
         currentCorridorColumn = corridorStartColumn
         currentCorridorWidthColumns = corridorWidthColumns
         val safeLeft = corridorStartColumn * columnWidth
         val safeRight = (corridorStartColumn + corridorWidthColumns) * columnWidth
         if (safeLeft > 0f) {
-            spawnObstacleInRange(0f, safeLeft, level, style, rowToken, difficultyPreset, pattern, 0)
+            spawnObstacleInRange(0f, safeLeft, easedFactor, style, rowToken, difficultyPreset, pattern, 0)
         }
         if (safeRight < vw) {
-            spawnObstacleInRange(safeRight, vw, level, style, rowToken, difficultyPreset, pattern, 1)
+            spawnObstacleInRange(safeRight, vw, easedFactor, style, rowToken, difficultyPreset, pattern, 1)
         }
     }
 
-    private fun selectObstaclePattern(level: Int): ObstaclePattern {
+    private fun selectObstaclePattern(easedFactor: Float): ObstaclePattern {
         val hardPatterns = setOf(ObstaclePattern.CENTER, ObstaclePattern.CROSS)
-        if (hardPatternStreak >= 2) {
+        if (hardPatternStreak >= 3) {
             hardPatternStreak = 0
+            forceRecoveryRow = true
             recentObstaclePatterns.clear()
-            return ObstaclePattern.DOUBLE
+            return if (easedFactor > 0.6f) ObstaclePattern.DOUBLE else listOf(ObstaclePattern.LEFT, ObstaclePattern.RIGHT).random()
         }
 
-        val candidates = when {
-            level >= 6 -> listOf(ObstaclePattern.LEFT, ObstaclePattern.RIGHT, ObstaclePattern.CENTER, ObstaclePattern.DOUBLE, ObstaclePattern.SWAY, ObstaclePattern.CROSS)
-            level >= 3 -> listOf(ObstaclePattern.LEFT, ObstaclePattern.RIGHT, ObstaclePattern.CENTER, ObstaclePattern.DOUBLE, ObstaclePattern.SWAY)
-            else -> listOf(ObstaclePattern.LEFT, ObstaclePattern.RIGHT, ObstaclePattern.CENTER)
+        val candidates = if (easedFactor > 0.6f) {
+            listOf(ObstaclePattern.LEFT, ObstaclePattern.RIGHT, ObstaclePattern.CENTER, ObstaclePattern.DOUBLE, ObstaclePattern.SWAY, ObstaclePattern.CROSS)
+        } else if (easedFactor >= 0.3f) {
+            listOf(ObstaclePattern.LEFT, ObstaclePattern.RIGHT, ObstaclePattern.CENTER, ObstaclePattern.SWAY)
+        } else {
+            listOf(ObstaclePattern.LEFT, ObstaclePattern.RIGHT, ObstaclePattern.CENTER)
         }
         val lastPattern = recentObstaclePatterns.lastOrNull()
         val filtered = candidates.filter { it != lastPattern }
@@ -1262,13 +1401,8 @@ class GameViewModel @Inject constructor(
 
     private fun selectCorridorStart(columns: Int, corridorWidthColumns: Int, pattern: ObstaclePattern): Int {
         val maxStart = (columns - corridorWidthColumns).coerceAtLeast(0)
-        val maxShift = when {
-            pattern == ObstaclePattern.CROSS || pattern == ObstaclePattern.SWAY -> 2
-            currentCorridorWidthColumns <= 1 -> 1
-            else -> 1
-        }
+        val maxShift = 1
 
-        // Prefer corridors near the player's current horizontal position to avoid impossible shifts
         val leafColumn = ((_uiState.value.leafX / GameConstants.VIRTUAL_WIDTH) * columns).toInt().coerceIn(0, columns - 1)
         val leafPreferred = (leafColumn - corridorWidthColumns / 2).coerceIn(0, maxStart)
 
@@ -1281,30 +1415,31 @@ class GameViewModel @Inject constructor(
             ObstaclePattern.CROSS -> ((currentCorridorColumn + maxStart) / 2).coerceIn(0, maxStart)
         }
 
-        // Blend pattern-based preference with leaf-based preference; bias towards leafPreferred but respect maxShift
         val mixedPreferred = ((preferredStart * 0.6f) + (leafPreferred * 0.4f)).toInt().coerceIn(0, maxStart)
         val currentStart = currentCorridorColumn.coerceIn(0, maxStart)
         val clampedPreferred = mixedPreferred.coerceIn(max(0, currentStart - maxShift), min(maxStart, currentStart + maxShift))
         nextGapOnLeft = !nextGapOnLeft
-        // TODO-29 DONE: Safe corridor selection now biases toward the player's current column to avoid impossible shifts
         return clampedPreferred
     }
 
-    private fun spawnObstacleInRange(minX: Float, maxX: Float, level: Int, style: HurdleStyle, rowToken: Int, difficultyPreset: DifficultyPreset, pattern: ObstaclePattern, variant: Int) {
+    private fun spawnObstacleInRange(minX: Float, maxX: Float, easedFactor: Float, style: HurdleStyle, rowToken: Int, difficultyPreset: DifficultyPreset, pattern: ObstaclePattern, variant: Int) {
         val kind = if (Random.nextFloat() < GameConstants.ROCK_SPAWN_CHANCE) ObstacleKind.ROCK else ObstacleKind.LOG
         val difficultySpeedFactor = when (difficultyPreset) {
-            DifficultyPreset.EASY -> 0.9f
-            DifficultyPreset.NORMAL -> 1f
-            DifficultyPreset.HARD -> 1.12f
-            DifficultyPreset.EXTREME -> 1.24f
+            DifficultyPreset.EASY -> 0.82f
+            DifficultyPreset.NORMAL -> 1.0f
+            DifficultyPreset.HARD -> 1.15f
+            DifficultyPreset.EXTREME -> 1.28f
         }
         val (w, h) = if (kind == ObstacleKind.LOG)
             lerp(GameConstants.OBSTACLE_MIN_WIDTH, GameConstants.OBSTACLE_MAX_WIDTH, Random.nextFloat()) to GameConstants.OBSTACLE_HEIGHT.coerceAtMost(80f)
         else lerp(GameConstants.ROCK_MIN_WIDTH, GameConstants.ROCK_MAX_WIDTH, Random.nextFloat()) to GameConstants.ROCK_HEIGHT
         val cw = min(w, maxX - minX)
         val x = lerp(minX + cw * 0.5f, maxX - cw * 0.5f, Random.nextFloat())
-        val baseSpeed = lerp(GameConstants.OBSTACLE_MIN_SPEED, GameConstants.OBSTACLE_MAX_SPEED, Random.nextFloat())
-        val speed = min(GameConstants.SPEED_CAP, (baseSpeed + (level - 1) * GameConstants.LEVEL_SPEED_BONUS + if (kind == ObstacleKind.ROCK) GameConstants.ROCK_SPEED_BONUS else 0f) * difficultySpeedFactor)
+        val baseSpeed = 240f + (840f - 240f) * easedFactor
+        val rockSpeedBonus = if (kind == ObstacleKind.ROCK) GameConstants.ROCK_SPEED_BONUS else 0f
+        // Apply exponential time-based speed multiplier on top of eased factor
+        val timeMult = DifficultyCalculator.obstacleSpeedMultiplier(runTime)
+        val speed = min(GameConstants.SPEED_CAP, (baseSpeed + rockSpeedBonus) * difficultySpeedFactor * timeMult)
         val driftPhase = Random.nextFloat() * PI.toFloat() * 2f
         val entity = if (obstaclePool.isEmpty()) ObstacleEntity(nextObstacleId++, x, -h, cw, h, speed, kind, style, rowToken, pattern, variant, driftPhase, 0f)
         else obstaclePool.removeFirst().apply {
@@ -1342,6 +1477,9 @@ class GameViewModel @Inject constructor(
             if (magnetPull) { val dx = leafRect.centerX() - b.x; val dy = leafRect.centerY() - b.y; val dist = kotlin.math.sqrt(dx * dx + dy * dy); if (dist < GameConstants.MAGNET_PULL_RADIUS) { b.x += dx / dist * 200f * dt; b.y += dy / dist * 200f * dt } }
             if (!collected && circleIntersectsRect(b.x, b.y, b.radius, leafRect)) {
                 collected = true; b.collected = true; audioEngine.playCollect()
+                vignetteFlashAlpha = 0.6f
+                vignetteFlashColor = b.kind.color
+                activeBoostKind = b.kind
                 // spawn a short-lived collect effect for VFX
                 activeCollectEffects.add(CollectEffect(b.x, b.y, 0f, "boost", 0, "+${b.kind.displayName}"))
             }
@@ -1376,6 +1514,14 @@ class GameViewModel @Inject constructor(
             if (!collected && circleIntersectsRect(p.x, p.y, p.radius, leafRect)) {
                 collected = true; p.collected = true
                 activePowerUpTimers[p.type] = p.type.durationSec
+                vignetteFlashAlpha = 0.6f
+                vignetteFlashColor = when (p.type) {
+                    PowerUpType.SHIELD -> 0xFF44F0C5.toInt()
+                    PowerUpType.SPEED_BOOST -> 0xFFFFD83D.toInt()
+                    PowerUpType.MAGNET -> 0xFFFF6AA8.toInt()
+                    PowerUpType.SLOW_TIME -> 0xFFB88CFF.toInt()
+                    PowerUpType.DOUBLE_POINTS -> 0xFFFF9E2C.toInt()
+                }
                 runDrops += GameConstants.DROPS_PER_POWERUP
                 usedPowerUpsThisRun += 1
                 
@@ -1388,7 +1534,7 @@ class GameViewModel @Inject constructor(
                 audioEngine.playBoosterPickup(typeName)
                 audioEngine.playBoosterActivate(typeName)
                 
-                val label = "+${p.type.displayName.uppercase()} ${p.type.icon}"
+                val label = "+${p.type.displayName.uppercase()}"
                 activeCollectEffects.add(CollectEffect(p.x, p.y, 0f, "powerup", 0, label))
             }
             if (p.collected || p.y - p.radius > GameConstants.VIRTUAL_HEIGHT + 80f) { iter.remove(); powerUpPool.addLast(p) }
@@ -1419,9 +1565,16 @@ class GameViewModel @Inject constructor(
     // ── Daily challenge ──────────────────────────────────────────────────────
 
     private fun resolveDailyChallenge(): DailyChallenge {
-        val dayIndex = (System.currentTimeMillis() / 86400000L).toInt()
-        val type = ChallengeType.entries[dayIndex % ChallengeType.entries.size]
-        return DailyChallenge(type, dayIndex = dayIndex)
+        val calendar = java.util.Calendar.getInstance()
+        val dayOfYear = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+        val gamesPlayed = _uiState.value.runHistory.size
+        
+        var type = ChallengeTracker.getDailyChallengeType(dayOfYear)
+        if (!ChallengeTracker.isChallengeUnlocked(type, gamesPlayed)) {
+            val nextIndex = (dayOfYear + 1) % ChallengeType.entries.size
+            type = ChallengeType.entries[nextIndex]
+        }
+        return DailyChallenge(type, dayIndex = dayOfYear)
     }
 
     private fun challengeTarget(type: ChallengeType): Int = when (type) {
@@ -1465,15 +1618,18 @@ class GameViewModel @Inject constructor(
         activePowerUpTimers.clear()
         trailParticles.clear(); trailSpawnAccum = 0f
         trailPositions.clear(); trailBufferAccumulator = 0f
-        nearMissComboMultiplier = 1; nearMissComboTimer = 0f; nearMissFlashAlpha = 0f
+        nearMissComboMultiplier = 1f; consecutiveDodges = 0; runScore = 0f; passiveScoreAccumulator = 0f; nearMissComboTimer = 0f; nearMissFlashAlpha = 0f; vignetteFlashAlpha = 0f; vignetteFlashColor = 0; cameraShakeAmount = 0f
         nearMissesThisRun = 0
         recentDodges.clear(); adaptiveDiff = AdaptiveDifficulty()
         currentEvent = null
+        eventWarningText = null
+        eventWarningTimer = 0f
+        pendingEvent = null
         eventTimer = GameConstants.EVENT_MIN_INTERVAL + Random.nextFloat() * (GameConstants.EVENT_MAX_INTERVAL - GameConstants.EVENT_MIN_INTERVAL)
         spawnTimer = GameConstants.OBSTACLE_SPAWN_INTERVAL
         boostSpawnTimer = GameConstants.BOOST_SPAWN_INTERVAL
         powerUpSpawnTimer = GameConstants.POWERUP_SPAWN_INTERVAL
-        nextObstacleId = 0L; nextBoostId = 0L; nextPowerUpId = 0L; boostTimer = 0f
+        nextObstacleId = 0L; nextBoostId = 0L; nextPowerUpId = 0L; boostTimer = 0f; activeBoostKind = null
         nearMissSfxCooldown = 0f
         lastSpawnY = -GameConstants.MIN_ROW_SPACING
         lastTimestampNanos = 0L; runTime = 0f; runDrops = 0
@@ -1497,15 +1653,69 @@ class GameViewModel @Inject constructor(
         targetX = GameConstants.VIRTUAL_WIDTH * 0.5f, targetY = GameConstants.LEAF_BASE_Y
     )
 
-    fun detectCollision(leafRect: RectF, obstacleRect: RectF): Boolean {
-        // Quick AABB check
-        if (rectIntersects(leafRect, obstacleRect)) return true
-        // Approximate leaf as circle/ellipse for edge collisions to reduce false positives
-        val cx = leafRect.centerX(); val cy = leafRect.centerY()
-        val rx = leafRect.width() * 0.5f; val ry = leafRect.height() * 0.5f
-        // Use conservative radius (smaller of half-width/half-height)
-        val radius = minOf(rx, ry) * 0.92f
-        return circleIntersectsRect(cx, cy, radius, obstacleRect)
+    private fun detectCollision(
+        leafX: Float,
+        leafY: Float,
+        leafBreathScale: Float,
+        o: ObstacleEntity,
+        theme: RiverTheme
+    ): Boolean {
+        val w = GameConstants.LEAF_WIDTH * GameConstants.LEAF_VISUAL_SCALE * leafBreathScale
+        val h = GameConstants.LEAF_HEIGHT * GameConstants.LEAF_VISUAL_SCALE * leafBreathScale
+        val tlx = leafX - w * 0.5f
+        val tly = leafY - h * 0.5f
+
+        val path = android.graphics.Path()
+        path.moveTo(tlx + w * 0.5f, tly)
+        path.quadTo(tlx + w * 0.98f, tly + h * 0.35f, tlx + w * 0.5f, tly + h)
+        path.quadTo(tlx + w * 0.02f, tly + h * 0.35f, tlx + w * 0.5f, tly)
+        path.close()
+
+        val rectF = RectF()
+        path.computeBounds(rectF, true)
+
+        val leafHitbox = RectF(
+            rectF.left + (rectF.width() * 0.20f),
+            rectF.top + (rectF.height() * 0.15f),
+            rectF.right - (rectF.width() * 0.20f),
+            rectF.bottom - (rectF.height() * 0.15f)
+        )
+
+        val shape = getObstacleShape(theme, o.kind, o.pattern, o.variant)
+        return when (shape) {
+            ObstacleShape.CIRCULAR -> {
+                val visualRadius = minOf(o.width, o.height) * (if (theme == RiverTheme.FOREST) 0.44f else 0.46f)
+                val obstacleRadius = visualRadius * 0.78f
+                val leafRadius = minOf(leafHitbox.width() * 0.5f, leafHitbox.height() * 0.5f)
+                val dx = leafX - o.x
+                val dy = leafY - o.y
+                val distSq = dx * dx + dy * dy
+                val sumRadius = leafRadius + obstacleRadius
+                distSq < sumRadius * sumRadius
+            }
+            ObstacleShape.RECTANGULAR -> {
+                val left = o.x - o.width * 0.5f
+                val top = o.y - o.height * 0.5f
+                val right = o.x + o.width * 0.5f
+                val bottom = o.y + o.height * 0.5f
+                val obstacleHitbox = RectF(left + 8f, top + 8f, right - 8f, bottom - 8f)
+                RectF.intersects(leafHitbox, obstacleHitbox)
+            }
+            ObstacleShape.ORGANIC -> {
+                val obstacleHitbox = RectF(
+                    o.x - o.width * 0.5f * 0.80f,
+                    o.y - o.height * 0.5f * 0.80f,
+                    o.x + o.width * 0.5f * 0.80f,
+                    o.y + o.height * 0.5f * 0.80f
+                )
+                RectF.intersects(leafHitbox, obstacleHitbox)
+            }
+        }
+    }
+
+    private fun calculateComboMultiplier(dodges: Int): Float {
+        if (dodges >= 25) return 4.0f
+        return 1.0f + 0.5f * (dodges / 5)
     }
 
     private fun rectIntersects(a: RectF, b: RectF): Boolean =
@@ -1528,3 +1738,6 @@ class GameViewModel @Inject constructor(
 
     override fun onCleared() { super.onCleared(); audioEngine.release() }
 }
+
+enum class ObstacleShape { CIRCULAR, RECTANGULAR, ORGANIC }
+fun getObstacleShape(theme: RiverTheme, kind: ObstacleKind, pattern: ObstaclePattern, variant: Int): ObstacleShape = ObstacleShape.CIRCULAR

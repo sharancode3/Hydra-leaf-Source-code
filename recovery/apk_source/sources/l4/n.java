@@ -1,0 +1,20 @@
+package l4;
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public final class n {
+
+    /* renamed from: a  reason: collision with root package name */
+    public final int f6595a;
+
+    /* renamed from: b  reason: collision with root package name */
+    public final byte[] f6596b;
+
+    /* renamed from: c  reason: collision with root package name */
+    public final boolean f6597c;
+
+    public n(int i8, byte[] bArr, boolean z9) {
+        this.f6595a = i8;
+        this.f6596b = bArr;
+        this.f6597c = z9;
+    }
+}

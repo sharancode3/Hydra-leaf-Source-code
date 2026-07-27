@@ -1,4 +1,4 @@
-﻿package com.example.hydraleaf
+package com.example.hydraleaf
 
 object GameConstants {
     // ── Virtual coordinate system ────────────────────────────────────────────
@@ -41,8 +41,8 @@ object GameConstants {
 
     // ── Rock obstacles ──────────────────────────────────────────────────────
     const val ROCK_MIN_WIDTH  = LEAF_WIDTH * 1.5f
-    const val ROCK_MAX_WIDTH  = LEAF_WIDTH * 2.4f
-    const val ROCK_HEIGHT     = LEAF_HEIGHT * 1.3f
+    const val ROCK_MAX_WIDTH  = VIRTUAL_WIDTH * 0.22f
+    const val ROCK_HEIGHT     = VIRTUAL_WIDTH * 0.22f
     const val ROCK_SPEED_BONUS = 60f
     const val ROCK_SPAWN_CHANCE = 0.35f
 
@@ -54,7 +54,7 @@ object GameConstants {
     const val BOOST_SPAWN_INTERVAL  = 7f
     const val BOOST_SPAWN_VARIATION = 4f
     const val BOOST_DRIFT_SPEED     = 140f
-    const val BOOST_RADIUS          = 95f
+    const val BOOST_RADIUS          = 45f
     const val BOOST_DURATION        = 3.5f
 
     // ── Safe-path hurdle ────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ object GameConstants {
     // ── Power-ups ───────────────────────────────────────────────────────────
     const val POWERUP_SPAWN_INTERVAL     = 12f
     const val POWERUP_SPAWN_VARIATION    = 5f
-    const val POWERUP_RADIUS             = 60f
+    const val POWERUP_RADIUS             = 45f
     const val POWERUP_DRIFT_SPEED        = 160f
     const val SHIELD_FLASH_RADIUS        = 200f
     const val MAGNET_PULL_RADIUS         = 300f

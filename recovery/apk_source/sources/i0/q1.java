@@ -1,0 +1,8 @@
+package i0;
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public abstract class q1 {
+
+    /* renamed from: a  reason: collision with root package name */
+    public static final s0.a f4368a = new s0.a(-711844679, n1.f4255j, false);
+}

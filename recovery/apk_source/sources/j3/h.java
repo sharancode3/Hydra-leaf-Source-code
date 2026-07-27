@@ -1,0 +1,11 @@
+package j3;
+
+import java.util.concurrent.ThreadFactory;
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public final class h implements ThreadFactory {
+    @Override // java.util.concurrent.ThreadFactory
+    public final Thread newThread(Runnable runnable) {
+        return new g(runnable);
+    }
+}

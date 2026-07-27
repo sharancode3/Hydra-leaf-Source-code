@@ -1,0 +1,17 @@
+package com.airbnb.lottie;
+/* compiled from: r8-map-id-3b8e03c37a48acffe9dca81345881c8d95264abac4fdd445ffdcd37ff7e7cb6b */
+/* loaded from: classes.dex */
+public class Lottie {
+    private Lottie() {
+    }
+
+    public static void initialize(LottieConfig lottieConfig) {
+        L.setFetcher(lottieConfig.networkFetcher);
+        L.setCacheProvider(lottieConfig.cacheProvider);
+        L.setTraceEnabled(lottieConfig.enableSystraceMarkers);
+        L.setNetworkCacheEnabled(lottieConfig.enableNetworkCache);
+        L.setDisablePathInterpolatorCache(lottieConfig.disablePathInterpolatorCache);
+        L.setDefaultAsyncUpdates(lottieConfig.defaultAsyncUpdates);
+        L.setReducedMotionOption(lottieConfig.reducedMotionOption);
+    }
+}

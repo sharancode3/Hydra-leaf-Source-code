@@ -1,0 +1,46 @@
+Hydra Leaf open-source asset drop manifest (native Android)
+
+Place free/CC0 files with these exact names to auto-enable runtime usage.
+
+Audio SFX (Freesound/Kenney/OpenGameArt, CC0 preferred):
+- sfx_collect.mp3
+- sfx_obstacle_pass.mp3
+- sfx_game_over.mp3
+- sfx_boost_collect.mp3
+- sfx_ui_tap.mp3
+- sfx_near_miss.mp3
+- sfx_shield_break.mp3
+- sfx_level_up.mp3
+
+Background music loops (OpenGameArt/FMA, CC0 preferred):
+- music_forest.ogg
+- music_arctic.ogg
+- music_lava.ogg
+- music_crystal.ogg
+- music_midnight.ogg
+
+Notes:
+- Drop files in this folder (res/raw).
+- GameAudioEngine auto-detects available files at runtime.
+- If a file is missing, the game falls back to synthesized audio so nothing breaks.
+
+Obstacle sprites (Kenney/OpenGameArt/CraftPix drops):
+- Place in: app/src/main/assets/images/obstacles/
+- Supported names:
+	- forest_log.png (or kenney_log.png)
+	- forest_rock.png (or kenney_rock.png)
+	- arctic_ice.png (or ice_formation.png)
+	- lava_rock.png
+	- crystal_cluster.png
+	- midnight_void_orb.png
+	- midnight_ruin_pillar.png
+
+Renderer behavior:
+- If a matching sprite exists, gameplay uses sprite-backed obstacle rendering.
+- If missing, it falls back to procedural canvas obstacles.
+
+Open-source sources from prompt:
+- https://kenney.nl/assets
+- https://opengameart.org
+- https://freesound.org
+- https://freemusicarchive.org
