@@ -1,70 +1,53 @@
-# 🌿 Hydra Leaf — v1.2.0
+# 🌿 Hydra Leaf
 
-Welcome! Hydra Leaf is a tiny, joyful river game for Android — guide a leaf, dodge obstacles, collect boosts, and unlock skins. This README is short, friendly, and ready-to-skim so you can get the APK and play fast.
+Welcome to **Hydra Leaf** — a joyful, fast-paced river game for Android! Guide a leaf down the river, dodge obstacles, collect boosts, and unlock cosmetics. 
 
-Download (release build):
+The game has evolved significantly since its first prototype and is currently at **Version 5.1**.
 
-- File: `app-release.apk`
-- Location: `app/build/outputs/apk/release/app-release.apk` (≈ 14.6 MB)
-- Quick download link (after upload): https://github.com/sharancode3/Hydra-leaf-apk/releases/tag/v1.2.0-r1
+## 🚀 Features
 
-Why you'll like it:
+- **Controls:** Play anywhere with Gyroscope, Touch, or Tap controls
+- **Cosmetics:** Unlock beautiful Leaf Skins and Trail Skins in the Shop
+- **Themes:** Multiple River Themes to customize your experience
+- **Progression:** Daily Challenges, Boosters, Upgrades, and multiple difficulty levels
+- **Stats:** Player Statistics and Leaderboards
+- **Customization:** Settings with advanced gameplay configuration
+- **Performance:** Lightweight APK, fast startup, and smooth UI built with Jetpack Compose
 
-- Play anywhere: one-touch or tilt controls
-- Cute cosmetics: skins and river themes you can buy in the Shop
-- Daily challenges and small rewards to keep things fresh
-- Lightweight: small APK, fast startup, made with Compose for smooth UI
+## 📥 Download and Play
 
-Quick start — run locally (Windows PowerShell):
+Want to play? You can download the latest APK release from the public showcase repository:
+
+👉 **[Download Latest APK](https://github.com/sharancode3/Hydra-leaf-apk/releases/latest)**
+
+*You can also view the full release history, changelogs, and older versions on the [Releases Page](https://github.com/sharancode3/Hydra-leaf-apk/releases).*
+
+## 📂 Repository Structure
+
+Please note how the project is organized on GitHub:
+- **[Public Showcase Repo](https://github.com/sharancode3/Hydra-leaf-apk):** This repository is public and is used to host all the compiled APKs, release history, changelogs, and screenshots.
+- **Private Source Code Repo:** The actual Kotlin source code and active development takes place in a private repository to protect the game's architecture and proprietary logic.
+
+## 🛠️ Local Development (For Collaborators)
+
+If you have access to the private source code repository and want to run the project locally, you can use Windows PowerShell:
 
 ```powershell
+# Build a debug APK
 .\gradlew.bat assembleDebug
+
+# Build a release APK
 .\gradlew.bat :app:assembleRelease
 ```
 
-Install the release APK to a connected device:
-
+Install the release APK to a connected Android device:
 ```powershell
 adb install -r app\build\outputs\apk\release\app-release.apk
 ```
 
-Make it downloadable on GitHub (3 easy steps):
+### Key Files
+- `app/src/main/java/.../GameViewModel.kt` — Core gameplay logic and state management
+- `app/src/main/java/.../LeafGameScreen.kt` — Game rendering and HUD UI
+- `app/src/main/java/.../GameConstants.kt` — Speeds, difficulty, and physics tuning
 
-1. Open your repo's **Releases** page and click **Draft a new release**. 
-2. Select tag `v1.2.0-r1` (already pushed), give the release a title like **Hydra Leaf v1.2.0**, and paste a 1-line note: `A small, joyful river game - release v1.2.0`.
-3. Drag `app-release.apk` into the assets area and click **Publish release**.
-
-After publishing the asset the direct download URL will be:
-
-```
-https://github.com/sharancode3/Hydra-leaf-apk/releases/download/v1.2.0/app-release.apk
-
-If you publish from tag `v1.2.0-r1`, use:
-
-```
-https://github.com/sharancode3/Hydra-leaf-apk/releases/download/v1.2.0-r1/app-release.apk
-```
-```
-
-Highlights in v1.2.0
-
-- Persistent bottom navigation and saved difficulty
-- Rebuilt HUD with accessible touch targets (48dp minimum)
-- Shop + daily challenges + celebration animations on claim/purchase
-- First-launch onboarding slides for new players
-
-Files you care about
-
-- `app/src/main/java/.../GameViewModel.kt` — gameplay + persistence
-- `app/src/main/java/.../LeafGameScreen.kt` — game rendering & HUD
-- `app/build.gradle.kts` — version bump: `versionName = "1.2.0"`, `versionCode = 3`
-
-If you want to tweak or extend
-
-- Tune speeds and difficulty: `GameConstants.kt`
-- Change progression or rewards: `GameViewModel.kt`
-- Update UI or themes: `LeafGameScreen.kt` and `ui/Theme.kt`
-
-Need help publishing the release? I can create the exact release title, description, and upload steps for copy/paste — tell me if you want the full 1-click text ready to paste into GitHub.
-
-Happy floating — go drop a leaf into the river! 🌊🍃
+Happy floating! 🌊🍃
